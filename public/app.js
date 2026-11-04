@@ -77,6 +77,8 @@ const rows=()=>[...$('node-list').children];
 const fields=row=>({row,name:row.querySelector('.node-name'),link:row.querySelector('.node-link')});
 function createRow({name='',link=''}={}) {
   const row=document.createElement('div');row.className='node-row';row.setAttribute('role','listitem');
+  const handle=document.createElement('button');handle.type='button';handle.className='link node-handle';
+  handle.innerHTML='<svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="2" cy="14" r="1.5"/><circle cx="8" cy="14" r="1.5"/></svg>';
   const index=document.createElement('span');index.className='node-index';index.setAttribute('aria-hidden','true');
   const nameInput=document.createElement('input');nameInput.className='node-name';nameInput.maxLength=64;nameInput.autocomplete='off';nameInput.spellcheck=false;nameInput.value=name;
   const linkInput=document.createElement('input');linkInput.className='node-link';linkInput.autocomplete='off';linkInput.spellcheck=false;linkInput.value=link;
@@ -84,7 +86,7 @@ function createRow({name='',link=''}={}) {
   const remove=document.createElement('button');remove.type='button';remove.className='link node-remove';remove.textContent='×';
   const error=document.createElement('p');error.className='node-error';error.id=`node-error-${++rowId}`;error.hidden=true;
   nameInput.setAttribute('aria-describedby',error.id);linkInput.setAttribute('aria-describedby',error.id);
-  row.append(index,nameInput,linkInput,remove,error);return row;
+  row.append(handle,index,nameInput,linkInput,remove,error);return row;
 }
 function setRows(list) {$('node-list').replaceChildren(...(list.length?list:[{}]).map(createRow));}
 const rowsFromText=text=>String(text||'').split(/\r?\n/).map(line=>line.trim()).filter(Boolean).map(splitNodeName);
@@ -105,7 +107,7 @@ function validate() {
     const error=row.querySelector('.node-error');error.hidden=true;error.textContent='';
     name.removeAttribute('aria-invalid');link.removeAttribute('aria-invalid');
     name.setAttribute('aria-label',t('nameAria',i+1));link.setAttribute('aria-label',t('linkAria',i+1));
-    row.querySelector('.node-remove').setAttribute('aria-label',t('removeNode',i+1));name.placeholder=t('namePlaceholder');
+    row.querySelector('.node-remove').setAttribute('aria-label',t('removeNode',i+1));row.querySelector('.node-handle').setAttribute('aria-label',t('moveNode',i+1));name.placeholder=t('namePlaceholder');
   });
   const filled=all.filter(f=>f.name.value.trim()||f.link.value.trim()).map(f=>({row:f.row,number:all.indexOf(f)+1,...effective(f)}));
   const linked=filled.filter(e=>e.link),missing=filled.filter(e=>!e.link);
@@ -197,6 +199,49 @@ $('node-list').addEventListener('keydown',event=>{
   if(row.nextElementSibling)row.nextElementSibling.querySelector('.node-name').focus();else if(rows().length<MAX_NODES)addRows([{}],row);
 });
 $('add-node').onclick=()=>addRows([{}]);
+// Sorting: drag a row by its handle (mouse, pen or touch), or focus the handle
+// and use the arrow keys. Rows slide into place (FLIP) unless motion is reduced.
+const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
+function moveRow(row,apply) {
+  const before=new Map(rows().map(r=>[r,r.offsetTop]));apply();
+  if(reducedMotion.matches)return;
+  for(const r of rows()){const dy=before.get(r)-r.offsetTop;if(dy&&r!==drag?.row)r.animate([{transform:`translateY(${dy}px)`},{transform:'none'}],{duration:160,easing:'ease-out'});}
+}
+let drag=null;
+$('node-list').addEventListener('pointerdown',event=>{
+  const handle=event.target.closest('.node-handle');if(!handle||busy||event.button!==0)return;
+  event.preventDefault();handle.setPointerCapture(event.pointerId);handle.focus({preventScroll:true});
+  const row=handle.closest('.node-row');drag={row,handle,pointer:event.pointerId,start:rows().indexOf(row)};
+  row.classList.add('dragging');$('node-list').classList.add('sorting');
+});
+$('node-list').addEventListener('pointermove',event=>{
+  if(!drag)return;
+  // offsetTop is relative to the list and ignores the slide animations.
+  const y=event.clientY-$('node-list').getBoundingClientRect().top,mid=r=>r.offsetTop+r.offsetHeight/2;
+  let prev=drag.row.previousElementSibling,next=drag.row.nextElementSibling;
+  while(prev&&y<mid(prev))prev=prev.previousElementSibling;
+  while(next&&y>mid(next))next=next.nextElementSibling;
+  if(prev!==drag.row.previousElementSibling)moveRow(drag.row,()=>prev?prev.after(drag.row):$('node-list').prepend(drag.row));
+  else if(next!==drag.row.nextElementSibling)moveRow(drag.row,()=>next?next.before(drag.row):$('node-list').append(drag.row));
+  // Moving the row in the DOM releases pointer capture; take it back.
+  if(!drag.handle.hasPointerCapture(drag.pointer))try{drag.handle.setPointerCapture(drag.pointer);}catch{}
+  if(event.clientY<48)scrollBy(0,-16);else if(event.clientY>innerHeight-48)scrollBy(0,16);
+});
+function endDrag(){
+  if(!drag)return;
+  const {row,start}=drag;drag=null;row.classList.remove('dragging');$('node-list').classList.remove('sorting');
+  if(rows().indexOf(row)!==start)validate();
+}
+document.addEventListener('pointerup',endDrag);
+document.addEventListener('pointercancel',endDrag);
+window.addEventListener('blur',endDrag);
+$('node-list').addEventListener('keydown',event=>{
+  const handle=event.target.closest('.node-handle');if(!handle||!['ArrowUp','ArrowDown'].includes(event.key))return;
+  event.preventDefault();const row=handle.closest('.node-row'),up=event.key==='ArrowUp';
+  const target=up?row.previousElementSibling:row.nextElementSibling;if(!target)return;
+  moveRow(row,()=>up?target.before(row):target.after(row));
+  handle.focus();validate();toast(t('moved',rows().indexOf(row)+1),false,true);
+});
 $('template-search').oninput=renderTemplates;$('template-filter').onchange=renderTemplates;
 $('template-select').onchange=()=>{if(templateById($('template-select').value)){selectedTemplate=$('template-select').value;updateDirty();renderDetail();validate();}};
 $('editor').onsubmit=async e=>{

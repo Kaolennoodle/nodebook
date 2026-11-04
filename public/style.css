@@ -29,7 +29,7 @@ h2 { font-size: 1rem; margin: 1.75rem 0 .5rem; }
 .box h2 { margin-top: 0; }
 p { margin: 0 0 .75rem; }
 
-.header, main, footer { width: 100%; max-width: 720px; margin: 0 auto; padding: 0 16px; }
+.header, main, footer { width: 100%; max-width: 960px; margin: 0 auto; padding: 0 16px; }
 .header { display: flex; align-items: center; justify-content: space-between; padding-top: 16px; padding-bottom: 16px; }
 .brand { display: flex; align-items: center; gap: 8px; color: var(--text); text-decoration: none; font-weight: 600; }
 .brand img { border-radius: 6px; }
@@ -45,6 +45,8 @@ footer { padding-top: 16px; padding-bottom: 24px; color: var(--muted); font-size
 .steps li.active { border-color: var(--accent); color: var(--text); font-weight: 600; }
 
 .lead { color: var(--muted); }
+/* The page is wide for the node table; keep running text at a readable length. */
+.lead, .note, .view > .hint { max-width: 46rem; }
 .hint, .muted, .note { color: var(--muted); font-size: .875rem; }
 .note { margin-top: 1rem; }
 .box { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-top: 1.25rem; }
@@ -64,17 +66,22 @@ input, select, button {
 }
 input, select { height: 38px; padding: 0 10px; }
 .field-label { display: block; font-weight: 500; margin: .75rem 0 .35rem; }
-.node-head, .node-row { display: grid; grid-template-columns: 2em minmax(0, 1fr) minmax(0, 2.4fr) 32px; column-gap: 8px; align-items: center; }
+.node-head, .node-row { display: grid; grid-template-columns: 24px 2em minmax(0, 1fr) minmax(0, 3.2fr) 32px; column-gap: 8px; align-items: center; }
 .node-head { color: var(--muted); font-size: .8rem; padding-bottom: 4px; }
-.node-list { display: flex; flex-direction: column; gap: 8px; }
-.node-row { row-gap: 4px; }
+.node-list { position: relative; display: flex; flex-direction: column; gap: 8px; }
+.node-row { row-gap: 4px; border-radius: 6px; }
+button.node-handle { width: 24px; height: 38px; padding: 0; display: grid; place-items: center; cursor: grab; touch-action: none; }
+button.node-handle svg { fill: currentColor; }
+.node-list.sorting, .node-list.sorting * { cursor: grabbing !important; user-select: none; }
+.node-row.dragging { position: relative; z-index: 1; background: var(--surface); box-shadow: 0 0 0 6px var(--surface), 0 6px 20px 4px #0002; }
+.node-row.dragging .node-handle { color: var(--accent); }
 .node-row input { width: 100%; min-width: 0; }
 .node-link { font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .node-index { text-align: right; color: var(--muted); font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; user-select: none; }
 .node-row.invalid .node-index { color: var(--error); font-weight: 600; }
 .node-row input[aria-invalid="true"] { border-color: var(--error); }
 button.node-remove { width: 32px; padding: 0; font-size: 1.25rem; line-height: 1; }
-.node-error { grid-column: 2 / -1; margin: 0; color: var(--error); font-size: .8rem; }
+.node-error { grid-column: 3 / -1; margin: 0; color: var(--error); font-size: .8rem; }
 .node-tools { margin-top: 10px; }
 select[size] { width: 100%; height: auto; padding: 4px; margin-top: 8px; }
 select[size] option { padding: 4px 6px; border-radius: 4px; }
@@ -126,10 +133,10 @@ button.link:hover:not(:disabled) { color: var(--text); }
   .row { flex-wrap: wrap; }
   .row > input { flex-basis: 100%; }
   .node-head { display: none; }
-  .node-row { grid-template-columns: 1.6em minmax(0, 1fr) 32px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
-  .node-index { grid-row: 1; }
-  .node-name { grid-column: 2; grid-row: 1; }
-  .node-remove { grid-column: 3; grid-row: 1; }
-  .node-link { grid-column: 2 / -1; grid-row: 2; }
+  .node-row { grid-template-columns: 24px 1.4em minmax(0, 1fr) 32px; column-gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  .node-handle, .node-index { grid-row: 1; }
+  .node-name { grid-column: 3; grid-row: 1; }
+  .node-remove { grid-column: 4; grid-row: 1; }
+  .node-link { grid-column: 3 / -1; grid-row: 2; }
   .steps { font-size: .8rem; }
 }
