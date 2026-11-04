@@ -22,11 +22,45 @@ const errors = {
   "不支持该 UDP 中继模式": "Unsupported UDP relay mode",
   "不支持该 XHTTP 模式": "Unsupported XHTTP mode"
 };
-function englishError(message) { return errors[message] || message.replace('暂不支持参数 ', 'Unsupported parameter: ').replace('暂不支持传输 ', 'Unsupported transport: '); }
+function englishError(message) {
+  return errors[message] || message.replace('暂不支持参数 ', 'Unsupported parameter: ').replace('暂不支持传输 ', 'Unsupported transport: ')
+    .replace(/^节点名称与第 (\d+) 行重复$/, 'Node name duplicates line $1');
+}
 
 export const PROTOCOLS = {vless:'VLESS', trojan:'Trojan', hysteria2:'Hysteria2', tuic:'TUIC', vmess:'VMess', ss:'Shadowsocks'};
 const ALIASES = {hy2:'hysteria2'};
 export const protocolOf = line => { const scheme = line.trim().split(':')[0].toLowerCase(); return ALIASES[scheme] || (scheme in PROTOCOLS ? scheme : null); };
+
+// Node names live in the link itself: the #fragment, or `ps` inside a VMess
+// payload without one. The editor shows them in a separate field and writes
+// them back as a fragment, which takes precedence for VMess too.
+function vmessPs(link) { try { const data = JSON.parse(base64(link.slice(8))); return data && data.ps ? String(data.ps).trim() : ''; } catch { return ''; } }
+export function splitNodeName(line) {
+  const text = String(line).trim(), at = text.indexOf('#');
+  if (at < 0) return {name: protocolOf(text) === 'vmess' ? vmessPs(text) : '', link: text};
+  try { return {name: decodeURIComponent(text.slice(at + 1)).trim(), link: text.slice(0, at)}; }
+  catch { return {name: '', link: text}; }
+}
+// Encodes only what would break parsing, so stored links stay readable.
+export function joinNodeName(name, link) {
+  const base = String(link).trim(), label = String(name).trim();
+  if (!base) return '';
+  // An empty fragment keeps a VMess `ps` from coming back once the name is cleared.
+  return label || protocolOf(base) === 'vmess' ? `${base}#${label.replace(/[%#\s]/g, encodeURIComponent)}` : base;
+}
+// Prefix avoids collisions with ACL4SSR groups and built-in policy names.
+export const nodeLabel = (name, type, index) => `节点 · ${name || `${type}-${index + 1}`}`;
+// Names that differ only by case, width or spacing are easy to confuse in a client.
+export const nameKey = label => label.normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
+// Groups of indexes into entries ({name, link}) whose node names would clash.
+export function duplicateNames(entries) {
+  const groups = new Map();
+  entries.forEach(({name, link}, i) => {
+    const key = nameKey(nodeLabel(String(name).trim(), protocolOf(link) || 'node', i));
+    groups.set(key, [...(groups.get(key) || []), i]);
+  });
+  return [...groups.values()].filter(group => group.length > 1);
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SS_CIPHERS = ['aes-128-gcm','aes-192-gcm','aes-256-gcm','chacha20-ietf-poly1305','xchacha20-ietf-poly1305',
@@ -168,7 +202,8 @@ function vmess(line) {
   if (network === 'ws') p['ws-opts'] = {path: data.path || '/', ...(data.host ? {headers: {Host: data.host}} : {})};
   if (network === 'grpc') p['grpc-opts'] = {'grpc-service-name': data.path || ''};
   if (network === 'h2') { p.tls = true; p['h2-opts'] = {path: data.path || '/', ...(data.host ? {host: data.host.split(',')} : {})}; }
-  return {proxy: p, name: data.ps ? String(data.ps) : ''};
+  const hashAt = line.indexOf('#');
+  return {proxy: p, name: hashAt >= 0 ? decodeURIComponent(line.slice(hashAt + 1)) : data.ps ? String(data.ps) : ''};
 }
 
 // SIP002 (ss://base64(method:pass)@host:port/?plugin=...#name), plain userinfo
@@ -210,11 +245,12 @@ function shadowsocks(line) {
   return {proxy: p, name};
 }
 
-export function parseNodes(text, language = 'zh') {
+// unique: reject clashing names (saving); otherwise number them (old profiles).
+export function parseNodes(text, language = 'zh', {unique = false} = {}) {
   if (typeof text !== 'string' || !text.trim()) throw new Error(language === 'zh' ? '请输入节点链接' : 'Enter at least one node link');
   const lines = text.trim().split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   if (lines.length > 200) throw new Error(language === 'zh' ? '最多保存 200 个节点' : 'Use no more than 200 nodes');
-  const names = new Set(['DIRECT', 'REJECT']);
+  const names = new Set(['DIRECT', 'REJECT']), seen = new Map();
   return lines.map((line, i) => {
     try {
       if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(line)) throw new Error('节点链接格式无效');
@@ -228,8 +264,12 @@ export function parseNodes(text, language = 'zh') {
         proxy = type === 'hysteria2' ? hysteria2(u) : type === 'tuic' ? tuic(u) : vlessOrTrojan(u, type);
         name = decodeURIComponent(u.hash.slice(1));
       }
-      // Prefix avoids collisions with ACL4SSR groups and built-in policy names.
-      let label = `节点 · ${name || `${type}-${i + 1}`}`;
+      let label = nodeLabel(name.trim(), type, i);
+      if (unique) {
+        const key = nameKey(label);
+        if (seen.has(key)) throw new Error(`节点名称与第 ${seen.get(key)} 行重复`);
+        seen.set(key, i + 1);
+      }
       const base = label; let n = 2;
       while (names.has(label)) label = `${base} (${n++})`;
       names.add(label);

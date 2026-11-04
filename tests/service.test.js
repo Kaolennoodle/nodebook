@@ -43,6 +43,7 @@ test('D1 lifecycle, optimistic concurrency, authorization and stable subscriptio
   assert.equal((await call(path,'PUT',{nodes:node,revision:0},'https://evil.example')).status,403);
   assert.equal((await call(path,'PUT',{nodes:node,revision:0})).status,200);
   assert.equal((await call(path,'PUT',{nodes:node,revision:0})).status,409);
+  assert.equal((await call(path,'PUT',{nodes:node+'\n'+node,revision:1})).status,400);
   assert.equal((await (await call(path)).json()).revision,1);
   assert.equal((await (await call(path)).json()).template,'online');
   assert.equal((await call(path,'PUT',{nodes:node,revision:1,template:'unknown-template'})).status,400);

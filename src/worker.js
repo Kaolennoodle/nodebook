@@ -37,7 +37,7 @@ export default {
         const bytes = new Uint8Array(size); let offset = 0; for (const c of chunks) {bytes.set(c,offset); offset += c.length;}
         let data; try { data = JSON.parse(new TextDecoder().decode(bytes)); } catch {return json({error:'无效 JSON'},400);}
         if (!data || !Number.isInteger(data.revision) || data.revision < 0) return json({error:'版本无效，请重新打开页面'},400);
-        try { parseNodes(data.nodes); } catch(e) {return json({error:e.message},400);}
+        try { parseNodes(data.nodes, 'zh', {unique: true}); } catch(e) {return json({error:e.message},400);}
         // Older clients omit template: preserve the saved choice on update.
         const previous = data.template === undefined && data.revision > 0 ? await env.DB.prepare('SELECT template FROM profiles WHERE id = ?').bind(id).first() : null;
         const selectedTemplate = data.template ?? previous?.template ?? 'online';

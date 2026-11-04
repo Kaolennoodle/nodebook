@@ -19,10 +19,13 @@
 <section id="nodes" class="view" hidden aria-labelledby="nodes-title">
 <h1 id="nodes-title" tabindex="-1" data-t="nodesTitle">Nodes and template</h1>
 <form id="editor">
-<div class="label-row"><label for="node-input" data-t="nodeLinks">Node links, one per line</label><span id="node-count" class="muted" aria-live="polite"></span></div>
-<div class="editor"><div id="node-gutter" class="gutter" aria-hidden="true"></div><div class="editor-body"><textarea id="node-input" spellcheck="false" autocomplete="off" aria-describedby="validation limit" placeholder="vless://uuid@server:443?security=tls&type=ws#HK&#10;hysteria2://password@server:443?sni=example.com#JP&#10;ss://YWVzLTI1Ni1nY206cGFzcw@server:8388#US"></textarea><div id="node-mirror" class="mirror" aria-hidden="true"></div></div></div>
+<div class="label-row"><span id="nodes-label" class="field-label" data-t="nodeList">Nodes</span><span id="node-count" class="muted" aria-live="polite"></span></div>
+<div class="node-head" aria-hidden="true"><span></span><span data-t="nameCol">Name</span><span data-t="linkCol">Link</span><span></span></div>
+<div id="node-list" class="node-list" role="list" aria-labelledby="nodes-label" aria-describedby="validation limit"></div>
+<div class="node-tools"><button id="add-node" type="button" data-t="addNode">Add node</button></div>
 <p id="validation" class="validation" role="status" aria-live="polite"></p>
 <p id="limit" class="hint" data-t="limit">Up to 200 nodes. VLESS, Trojan, Hysteria2, TUIC, VMess, Shadowsocks.</p>
+<p class="hint" data-t="nameHint">Leave the name blank to name the node automatically. Names must be unique. Paste several links into a link field to add them all at once; a name after # moves into the name field.</p>
 
 <h2 data-t="templateTitle">Routing template</h2>
 <div class="row"><label class="sr-only" for="template-search" data-t="searchTemplates">Search templates</label><input id="template-search" type="search" data-placeholder="searchTemplates" placeholder="Search templates"><label class="sr-only" for="template-filter" data-t="category">Category</label><select id="template-filter"><option value="all" data-t="all">All</option><option value="full" data-t="full">Full</option><option value="standard" data-t="standard">Standard</option><option value="mini" data-t="mini">Mini</option><option value="manual" data-t="manual">Manual only</option></select></div>

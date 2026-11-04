@@ -1,4 +1,4 @@
-import {parseNodes,PROTOCOLS,protocolOf} from './nodes.js';
+import {parseNodes,PROTOCOLS,protocolOf,splitNodeName,joinNodeName,duplicateNames} from './nodes.js';
 import {templates,templateById,DEFAULT_TEMPLATE} from './templates.js';
 import {zh,en} from './i18n.js';
 const $ = id => document.getElementById(id);
@@ -8,8 +8,9 @@ let language = ['zh','en'].includes(preferredLanguage) ? preferredLanguage : (/^
 let theme = preferences.get('nodebook-theme') || 'system';
 if (!['system','light','dark'].includes(theme)) theme = 'system';
 let view = 'access', secret = '', revision = 0, busy = false, dirty = false, selectedTemplate = DEFAULT_TEMPLATE, parsed = [], toastTimer;
-let savedNodes = '', savedTemplate = DEFAULT_TEMPLATE, errorLine = 0;
-const t = key => (language === 'zh' ? zh : en)[key] || key;
+let savedNodes = '', savedTemplate = DEFAULT_TEMPLATE, composed = '', rowId = 0;
+const MAX_NODES = 200;
+const t = (key,n) => {const text=(language === 'zh' ? zh : en)[key] || key;return n===undefined?text:text.replace('{n}',n);};
 const nodeCount = n => `${n} ${language === 'en' && n === 1 ? 'node' : t('count')}`;
 const validKey = value => /^[A-Za-z0-9_-]{16,128}$/.test(value);
 function toast(key,error=false,literal=false) {
@@ -26,7 +27,6 @@ function go(next,{replace=false,history=true}={}) {
   for(const id of order) $(id).hidden=id!==next;
   // Restart the entrance animation; direction follows the step order.
   const section=$(next);section.classList.remove('enter','enter-back');void section.offsetWidth;section.classList.add(back?'enter-back':'enter');
-  if(next==='nodes') fitNodes();
   const index=['access','nodes','result'].indexOf(next);
   document.querySelectorAll('[data-step]').forEach((item,i)=>{item.className=i===index?'active':i<index?'complete':''; if(i===index)item.setAttribute('aria-current','step');else item.removeAttribute('aria-current');});
   $('status').hidden=true;
@@ -71,36 +71,76 @@ function renderDetail() {
   const note=document.createElement('p');note.textContent=item.mode==='manual'?t('manualHint'):t('regionHint');
   box.append(title,desc,note);
 }
+// Each node is a row with separate name and link fields; together they are
+// stored as one link per line with the name as its #fragment.
+const rows=()=>[...$('node-list').children];
+const fields=row=>({row,name:row.querySelector('.node-name'),link:row.querySelector('.node-link')});
+function createRow({name='',link=''}={}) {
+  const row=document.createElement('div');row.className='node-row';row.setAttribute('role','listitem');
+  const index=document.createElement('span');index.className='node-index';index.setAttribute('aria-hidden','true');
+  const nameInput=document.createElement('input');nameInput.className='node-name';nameInput.maxLength=64;nameInput.autocomplete='off';nameInput.spellcheck=false;nameInput.value=name;
+  const linkInput=document.createElement('input');linkInput.className='node-link';linkInput.autocomplete='off';linkInput.spellcheck=false;linkInput.value=link;
+  linkInput.placeholder='vless:// · hysteria2:// · ss:// …';
+  const remove=document.createElement('button');remove.type='button';remove.className='link node-remove';remove.textContent='×';
+  const error=document.createElement('p');error.className='node-error';error.id=`node-error-${++rowId}`;error.hidden=true;
+  nameInput.setAttribute('aria-describedby',error.id);linkInput.setAttribute('aria-describedby',error.id);
+  row.append(index,nameInput,linkInput,remove,error);return row;
+}
+function setRows(list) {$('node-list').replaceChildren(...(list.length?list:[{}]).map(createRow));}
+const rowsFromText=text=>String(text||'').split(/\r?\n/).map(line=>line.trim()).filter(Boolean).map(splitNodeName);
+// A name typed after # in the link field wins only when the name field is empty.
+function effective({name,link}) {
+  let value=link.value.trim(),label=name.value.trim();
+  if(value.includes('#')){const split=splitNodeName(value);if(split.link!==value){value=split.link;label||=split.name;}}
+  return {name:label,link:value};
+}
+function showRowError(row,message,field) {
+  const error=row.querySelector('.node-error');error.textContent=error.hidden?message:`${error.textContent}${language==='zh'?'；':'; '}${message}`;error.hidden=false;
+  row.classList.add('invalid');row.querySelector(field==='name'?'.node-name':'.node-link').setAttribute('aria-invalid','true');
+}
 function validate() {
-  const text=$('node-input').value;const lines=text.split(/\r?\n/).filter(line=>line.trim());const counts={};
-  for(const line of lines) {const type=protocolOf(line);if(type)counts[type]=(counts[type]||0)+1;}
-  $('node-count').textContent=lines.length?[nodeCount(lines.length),...Object.entries(counts).map(([type,n])=>`${PROTOCOLS[type]} ${n}`)].join(' · '):'';
-  parsed=[];let valid=false;errorLine=0;
+  const all=rows().map(fields),counts={};
+  all.forEach(({row,name,link},i)=>{
+    row.querySelector('.node-index').textContent=i+1;row.classList.remove('invalid');
+    const error=row.querySelector('.node-error');error.hidden=true;error.textContent='';
+    name.removeAttribute('aria-invalid');link.removeAttribute('aria-invalid');
+    name.setAttribute('aria-label',t('nameAria',i+1));link.setAttribute('aria-label',t('linkAria',i+1));
+    row.querySelector('.node-remove').setAttribute('aria-label',t('removeNode',i+1));name.placeholder=t('namePlaceholder');
+  });
+  const filled=all.filter(f=>f.name.value.trim()||f.link.value.trim()).map(f=>({row:f.row,number:all.indexOf(f)+1,...effective(f)}));
+  const linked=filled.filter(e=>e.link),missing=filled.filter(e=>!e.link);
+  for(const entry of linked){const type=protocolOf(entry.link);if(type)counts[type]=(counts[type]||0)+1;}
+  $('node-count').textContent=linked.length?[nodeCount(linked.length),...Object.entries(counts).map(([type,n])=>`${PROTOCOLS[type]} ${n}`)].join(' · '):'';
+  // Blank names become <protocol>-<position>, as in parseNodes.
+  linked.forEach((entry,i)=>{if(!entry.name)entry.row.querySelector('.node-name').placeholder=`${t('autoName')}${protocolOf(entry.link)||'node'}-${i+1}`;});
+  const messages=[];
+  for(const entry of missing)showRowError(entry.row,t('missingLink'),'link');
+  if(missing.length)messages.push(t('missingLinks'));
+  const duplicates=duplicateNames(linked);
+  for(const group of duplicates)for(const i of group)showRowError(linked[i].row,t('duplicateName',group.filter(j=>j!==i).map(j=>linked[j].number).join(language==='zh'?'、':', ')),'name');
+  if(duplicates.length)messages.push(t('duplicates'));
+  composed=linked.map(entry=>joinNodeName(entry.name,entry.link)).join('\n');parsed=[];
   try {
-    if(new TextEncoder().encode(JSON.stringify({nodes:text,revision,template:selectedTemplate})).length>131072)throw Error(t('tooLarge'));
-    parsed=parseNodes(text,language);valid=true;$('validation').textContent=t('valid');$('validation').className='validation valid';
-  }catch(error){errorLine=+(error.message.match(/^(?:第 |Line )(\d+)/)?.[1]||0);$('validation').textContent=text.trim()?error.message:t('empty');$('validation').className='validation'+(text.trim()?' error':'');}
-  fitNodes();
-  $('node-input').setAttribute('aria-invalid',String(Boolean(text.trim())&&!valid));
-  $('save').disabled=busy||!valid||!templateById(selectedTemplate);return valid;
+    if(new TextEncoder().encode(JSON.stringify({nodes:composed,revision,template:selectedTemplate})).length>131072)throw Error(t('tooLarge'));
+    if(linked.length)parsed=parseNodes(composed,language);
+  }catch(error){
+    // parseNodes numbers the links it was given; point at the matching row.
+    const match=error.message.match(/^(?:第 (\d+) 行：|Line (\d+): )(.*)$/s),entry=match&&linked[+(match[1]||match[2])-1];
+    if(entry){showRowError(entry.row,match[3],'link');messages.push(`${t('nodeRef',entry.number)}${language==='zh'?'：':': '}${match[3]}`);}else messages.push(error.message);
+  }
+  const valid=Boolean(linked.length)&&!messages.length;
+  $('validation').textContent=!filled.length?t('empty'):valid?t('valid'):messages[0];
+  $('validation').className='validation'+(!filled.length?'':valid?' valid':' error');
+  $('add-node').disabled=busy||all.length>=MAX_NODES;
+  $('save').disabled=busy||!valid||!templateById(selectedTemplate);updateDirty();return valid;
 }
-// A hidden mirror measures each wrapped line, so the textarea grows without
-// collapsing first (which made the page jump) and line numbers stay aligned.
-// Blank lines are skipped, matching the numbering in parseNodes errors.
-function fitNodes(){
-  const box=$('node-input');if(box.offsetParent===null)return;
-  const lines=box.value.split('\n');
-  $('node-mirror').replaceChildren(...lines.map(line=>{const row=document.createElement('div');row.textContent=line||'\u200b';return row;}));
-  let n=0;
-  $('node-gutter').replaceChildren(...[...$('node-mirror').children].map((row,i)=>{
-    const cell=document.createElement('div');cell.style.height=`${row.offsetHeight}px`;
-    if(lines[i].trim()){cell.textContent=++n;if(n===errorLine)cell.className='error';}
-    return cell;
-  }));
-  box.style.height=`${Math.max(200,$('node-mirror').offsetHeight)}px`;
+function addRows(list,after,focus='name') {
+  const created=list.map(createRow);
+  if(after)after.after(...created);else $('node-list').append(...created);
+  validate();created.at(-1)?.querySelector(focus==='link'?'.node-link':'.node-name').focus();
 }
-function setBusy(value){busy=value;for(const id of ['open','create','node-input','template-search','template-filter','template-select','key-input','nodes-back'])$(id).disabled=value;validate();}
-function updateDirty(){dirty=$('node-input').value!==savedNodes||selectedTemplate!==savedTemplate;}
+function setBusy(value){busy=value;for(const id of ['open','create','template-search','template-filter','template-select','key-input','nodes-back'])$(id).disabled=value;$('node-list').querySelectorAll('input,button').forEach(el=>el.disabled=value);validate();}
+function updateDirty(){dirty=composed!==savedNodes||selectedTemplate!==savedTemplate;}
 async function load(key) {
   if(!validKey(key)){toast('invalidKey',true);return;}
   setBusy(true);toast('loading');
@@ -108,8 +148,9 @@ async function load(key) {
     const response=await fetch(`/api/profiles/${key}`,{cache:'no-store'});
     if(!response.ok){toast(response.status===404?'missing':'service',true);return;}
     const data=await response.json();secret=key;revision=data.revision;selectedTemplate=templateById(data.template)?data.template:'online';
-    $('node-input').value=data.nodes;savedNodes=data.nodes;savedTemplate=selectedTemplate;dirty=false;
-    $('template-search').value='';$('template-filter').value='all';renderTemplates();validate();go('nodes',{replace:true});
+    // Compare against the normalized form so opening alone is not an edit.
+    setRows(rowsFromText(data.nodes));savedTemplate=selectedTemplate;$('template-search').value='';$('template-filter').value='all';
+    renderTemplates();validate();savedNodes=composed;dirty=false;go('nodes',{replace:true});
   }catch{toast('network',true);}finally{setBusy(false);}
 }
 function renderResult(){
@@ -119,23 +160,55 @@ function renderResult(){
 $('create').onclick=()=>{
   if(busy)return;
   secret=Array.from(crypto.getRandomValues(new Uint8Array(24)),b=>b.toString(16).padStart(2,'0')).join('');revision=0;selectedTemplate=DEFAULT_TEMPLATE;
-  $('node-input').value='';savedNodes='';savedTemplate=DEFAULT_TEMPLATE;dirty=false;$('template-search').value='';$('template-filter').value='all';
-  renderTemplates();validate();go('nodes');
+  setRows([]);savedNodes='';savedTemplate=DEFAULT_TEMPLATE;$('template-search').value='';$('template-filter').value='all';
+  renderTemplates();validate();dirty=false;go('nodes');
 };
 $('access-form').onsubmit=e=>{e.preventDefault();if(!busy)load($('key-input').value.trim());};
-$('node-input').oninput=()=>{updateDirty();validate();};
+$('node-list').addEventListener('input',validate);
+// Move a pasted or typed "#name" out of the link once the field is left.
+$('node-list').addEventListener('change',event=>{
+  if(!event.target.matches('.node-link'))return;
+  const {name,link}=fields(event.target.closest('.node-row')),value=link.value.trim();
+  if(!value.includes('#'))return;
+  const split=splitNodeName(value);if(split.link===value)return;
+  if(!name.value.trim())name.value=split.name;link.value=split.link;validate();
+});
+// Pasting several links fills one row each; a single link into an empty field also takes its name.
+$('node-list').addEventListener('paste',event=>{
+  if(!event.target.matches('.node-link'))return;
+  const lines=event.clipboardData.getData('text').split(/\r?\n/).map(line=>line.trim()).filter(Boolean);
+  const {row,name,link}=fields(event.target.closest('.node-row'));
+  if(!lines.length||(lines.length===1&&link.value.trim()))return;
+  event.preventDefault();
+  const entries=lines.map(splitNodeName);
+  if(!link.value.trim()){const first=entries.shift();link.value=first.link;if(!name.value.trim())name.value=first.name;}
+  if(entries.length)addRows(entries,row,'link');else validate();
+});
+$('node-list').addEventListener('click',event=>{
+  const button=event.target.closest('.node-remove');if(!button)return;
+  const row=button.closest('.node-row'),next=row.nextElementSibling||row.previousElementSibling;
+  if(!next){setRows([]);validate();rows()[0].querySelector('.node-name').focus();return;}
+  row.remove();validate();next.querySelector('.node-name').focus();
+});
+// Enter moves to the next node (adding one at the end) instead of saving.
+$('node-list').addEventListener('keydown',event=>{
+  if(event.key!=='Enter'||event.isComposing||!event.target.matches('input'))return;
+  event.preventDefault();const row=event.target.closest('.node-row');
+  if(row.nextElementSibling)row.nextElementSibling.querySelector('.node-name').focus();else if(rows().length<MAX_NODES)addRows([{}],row);
+});
+$('add-node').onclick=()=>addRows([{}]);
 $('template-search').oninput=renderTemplates;$('template-filter').onchange=renderTemplates;
 $('template-select').onchange=()=>{if(templateById($('template-select').value)){selectedTemplate=$('template-select').value;updateDirty();renderDetail();validate();}};
 $('editor').onsubmit=async e=>{
   e.preventDefault();if(busy||!validate())return;
   setBusy(true);toast('saving');
   try {
-    const response=await fetch(`/api/profiles/${secret}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({nodes:$('node-input').value,revision,template:selectedTemplate})});
+    const response=await fetch(`/api/profiles/${secret}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({nodes:composed,revision,template:selectedTemplate})});
     if(!response.ok){const key=response.status===409?'conflict':response.status===503?'service':response.status===413?'tooLarge':'saveError';toast(key,true);return;}
-    const data=await response.json();revision=data.revision;savedNodes=$('node-input').value;savedTemplate=selectedTemplate;dirty=false;go('result');
+    const data=await response.json();revision=data.revision;savedNodes=composed;savedTemplate=selectedTemplate;dirty=false;go('result');
   }catch{toast('network',true);}finally{setBusy(false);}
 };
-$('nodes-back').onclick=()=>{if(!dirty||confirm(t('discard'))){$('node-input').value=savedNodes;selectedTemplate=savedTemplate;dirty=false;go('access');}};
+$('nodes-back').onclick=()=>{if(!dirty||confirm(t('discard'))){setRows(rowsFromText(savedNodes));selectedTemplate=savedTemplate;validate();dirty=false;go('access');}};
 $('edit-again').onclick=()=>go('nodes');
 $('language').onclick=()=>{language=language==='zh'?'en':'zh';preferences.set('nodebook-language',language);localize();};
 $('theme').onclick=()=>{theme={system:'light',light:'dark',dark:'system'}[theme];preferences.set('nodebook-theme',theme);applyTheme();};
@@ -144,13 +217,12 @@ for(const button of document.querySelectorAll('[data-copy]'))button.onclick=asyn
   const input=$(button.dataset.copy);
   try{await navigator.clipboard.writeText(input.value);toast('copied');}catch{input.type='text';input.select();updateReveal();toast('copyFailed',true);}
 };
-window.addEventListener('resize',fitNodes);
 window.addEventListener('beforeunload',event=>{if(dirty){event.preventDefault();event.returnValue='';}});
 window.addEventListener('popstate',event=>{
   if(dirty&&!confirm(t('discard'))){go(view,{replace:true});return;}
-  if(dirty){$('node-input').value=savedNodes;selectedTemplate=savedTemplate;dirty=false;renderTemplates();validate();}
+  if(dirty){setRows(rowsFromText(savedNodes));selectedTemplate=savedTemplate;renderTemplates();validate();dirty=false;}
   go(event.state?.view||(secret&&revision?'nodes':'access'),{history:false});
 });
-localize();
+setRows([]);localize();
 const pathKey=location.pathname.split('/').filter(Boolean)[0];
 if(pathKey){go('access',{history:false});load(pathKey);}else go('access',{replace:true});

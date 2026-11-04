@@ -86,3 +86,31 @@ test('VLESS XHTTP', () => {
   assert.throws(() => parseNodes(`vless://${uuid}@example.com:443?security=tls&type=xhttp&mode=bogus`), /XHTTP 模式/);
   assert.throws(() => parseNodes(`trojan://pw@example.com:443?type=xhttp`), /暂不支持传输 xhttp/);
 });
+
+test('node names split from and join back into links', async () => {
+  const {splitNodeName, joinNodeName, duplicateNames} = await import('../public/nodes.js');
+  const vless = `vless://${uuid}@example.com:443?security=tls`;
+  assert.deepEqual(splitNodeName(`${vless}#%E9%A6%99%E6%B8%AF%201`), {name:'香港 1', link:vless});
+  assert.deepEqual(splitNodeName(vless), {name:'', link:vless});
+  for (const name of ['香港 1', 'a#b', '100%', '']) {
+    const line = joinNodeName(name, vless);
+    assert.deepEqual(splitNodeName(line), {name, link:vless});
+    assert.equal(parseNodes(line)[0].name, `节点 · ${name || 'vless-1'}`);
+  }
+  assert.equal(joinNodeName('香港', vless), `${vless}#香港`);
+  const ss = `ss://${b64('aes-256-gcm:pw')}@example.com:8388`;
+  assert.equal(parseNodes(joinNodeName('a#b c', ss))[0].name, '节点 · a#b c');
+  // VMess: ps is the name until a fragment overrides it; an empty fragment means automatic.
+  const vmess = 'vmess://' + b64(JSON.stringify({ps:'旧名', add:'example.com', port:'443', id:uuid}));
+  assert.deepEqual(splitNodeName(vmess), {name:'旧名', link:vmess});
+  assert.equal(parseNodes(joinNodeName('新名', vmess))[0].name, '节点 · 新名');
+  assert.equal(parseNodes(joinNodeName('', vmess))[0].name, '节点 · vmess-1');
+  assert.equal(parseNodes(vmess)[0].name, '节点 · 旧名');
+  // Clashes ignore case, width and spacing, and include automatic names.
+  assert.deepEqual(duplicateNames([{name:'HK', link:vless}, {name:'ｈｋ ', link:ss}, {name:'JP', link:ss}]), [[0, 1]]);
+  assert.deepEqual(duplicateNames([{name:'', link:vless}, {name:'vless-1', link:ss}]), [[0, 1]]);
+  assert.deepEqual(duplicateNames([{name:'', link:vless}, {name:'', link:vless}]), []);
+  assert.throws(() => parseNodes(`${vless}#HK\n${vless}#hk`, 'zh', {unique:true}), /第 2 行：节点名称与第 1 行重复/);
+  assert.throws(() => parseNodes(`${vless}#HK\n${vless}#HK`, 'en', {unique:true}), /Line 2: Node name duplicates line 1/);
+  assert.equal(parseNodes(`${vless}#HK\n${vless}#HK`)[1].name, '节点 · HK (2)');
+});
