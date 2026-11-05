@@ -114,3 +114,22 @@ test('node names split from and join back into links', async () => {
   assert.throws(() => parseNodes(`${vless}#HK\n${vless}#HK`, 'en', {unique:true}), /Line 2: Node name duplicates line 1/);
   assert.equal(parseNodes(`${vless}#HK\n${vless}#HK`)[1].name, '节点 · HK (2)');
 });
+
+test('disabled nodes are saved but left out of the subscription', async () => {
+  const {readNodeLine, writeNodeLine, duplicateNames} = await import('../public/nodes.js');
+  const vless = `vless://${uuid}@example.com:443?security=tls`, hy2 = 'hysteria2://pw@example.com:443';
+  assert.equal(writeNodeLine({enabled:false, name:'HK', link:vless}), `# ${vless}#HK`);
+  assert.deepEqual(readNodeLine(`# ${vless}#HK`), {enabled:false, name:'HK', link:vless});
+  assert.deepEqual(readNodeLine(`${vless}#HK`), {enabled:true, name:'HK', link:vless});
+  assert.equal(writeNodeLine({enabled:false, name:'x', link:''}), '');
+  // Automatic names and line numbers still count disabled lines.
+  const nodes = parseNodes(`# ${vless}#HK\n${hy2}\n${vless}#HK`, 'zh', {unique:true});
+  assert.deepEqual(nodes.map(p => p.name), ['节点 · hysteria2-2', '节点 · HK']);
+  assert.throws(() => parseNodes(`${hy2}\n# vless://bad`), /第 2 行/);
+  assert.throws(() => parseNodes(`# ${hy2}`), /请至少启用一个节点/);
+  assert.throws(() => parseNodes(`# ${hy2}`, 'en'), /Enable at least one node/);
+  assert.deepEqual(duplicateNames([{name:'HK', link:vless, enabled:false}, {name:'HK', link:hy2}]), []);
+  const config = convert(`${hy2}#On\n# ${vless}#Off`, readFileSync(new URL('./fixtures/ACL4SSR_Online.ini', import.meta.url), 'utf8'));
+  assert.deepEqual(config.proxies.map(p => p.name), ['节点 · On']);
+  assert.ok(!JSON.stringify(config['proxy-groups']).includes('Off'));
+});

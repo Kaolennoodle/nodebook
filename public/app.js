@@ -1,4 +1,4 @@
-import {parseNodes,PROTOCOLS,protocolOf,splitNodeName,joinNodeName,duplicateNames} from './nodes.js';
+import {parseNodes,PROTOCOLS,protocolOf,splitNodeName,readNodeLine,writeNodeLine,duplicateNames} from './nodes.js';
 import {templates,templateById,DEFAULT_TEMPLATE} from './templates.js';
 import {zh,en} from './i18n.js';
 const $ = id => document.getElementById(id);
@@ -74,8 +74,8 @@ function renderDetail() {
 // Each node is a row with separate name and link fields; together they are
 // stored as one link per line with the name as its #fragment.
 const rows=()=>[...$('node-list').children];
-const fields=row=>({row,name:row.querySelector('.node-name'),link:row.querySelector('.node-link')});
-function createRow({name='',link=''}={}) {
+const fields=row=>({row,name:row.querySelector('.node-name'),link:row.querySelector('.node-link'),toggle:row.querySelector('.node-toggle')});
+function createRow({name='',link='',enabled=true}={}) {
   const row=document.createElement('div');row.className='node-row';row.setAttribute('role','listitem');
   const handle=document.createElement('button');handle.type='button';handle.className='link node-handle';
   handle.innerHTML='<svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="2" cy="14" r="1.5"/><circle cx="8" cy="14" r="1.5"/></svg>';
@@ -83,18 +83,19 @@ function createRow({name='',link=''}={}) {
   const nameInput=document.createElement('input');nameInput.className='node-name';nameInput.maxLength=64;nameInput.autocomplete='off';nameInput.spellcheck=false;nameInput.value=name;
   const linkInput=document.createElement('input');linkInput.className='node-link';linkInput.autocomplete='off';linkInput.spellcheck=false;linkInput.value=link;
   linkInput.placeholder='vless:// · hysteria2:// · ss:// …';
+  const toggle=document.createElement('input');toggle.type='checkbox';toggle.className='node-toggle';toggle.checked=enabled;
   const remove=document.createElement('button');remove.type='button';remove.className='link node-remove';remove.textContent='×';
   const error=document.createElement('p');error.className='node-error';error.id=`node-error-${++rowId}`;error.hidden=true;
   nameInput.setAttribute('aria-describedby',error.id);linkInput.setAttribute('aria-describedby',error.id);
-  row.append(handle,index,nameInput,linkInput,remove,error);return row;
+  row.append(handle,index,nameInput,linkInput,toggle,remove,error);return row;
 }
 function setRows(list) {$('node-list').replaceChildren(...(list.length?list:[{}]).map(createRow));}
-const rowsFromText=text=>String(text||'').split(/\r?\n/).map(line=>line.trim()).filter(Boolean).map(splitNodeName);
+const rowsFromText=text=>String(text||'').split(/\r?\n/).map(line=>line.trim()).filter(Boolean).map(readNodeLine);
 // A name typed after # in the link field wins only when the name field is empty.
-function effective({name,link}) {
-  let value=link.value.trim(),label=name.value.trim();
+function effective({name,link,toggle}) {
+  let value=link.value.trim(),label=name.value.trim();const enabled=toggle.checked;
   if(value.includes('#')){const split=splitNodeName(value);if(split.link!==value){value=split.link;label||=split.name;}}
-  return {name:label,link:value};
+  return {name:label,link:value,enabled};
 }
 function showRowError(row,message,field) {
   const error=row.querySelector('.node-error');error.textContent=error.hidden?message:`${error.textContent}${language==='zh'?'；':'; '}${message}`;error.hidden=false;
@@ -102,8 +103,9 @@ function showRowError(row,message,field) {
 }
 function validate() {
   const all=rows().map(fields),counts={};
-  all.forEach(({row,name,link},i)=>{
-    row.querySelector('.node-index').textContent=i+1;row.classList.remove('invalid');
+  all.forEach(({row,name,link,toggle},i)=>{
+    row.querySelector('.node-index').textContent=i+1;row.classList.remove('invalid');row.classList.toggle('off',!toggle.checked);
+    toggle.setAttribute('aria-label',t('toggleNode',i+1));toggle.title=t(toggle.checked?'enabledTip':'disabledTip');
     const error=row.querySelector('.node-error');error.hidden=true;error.textContent='';
     name.removeAttribute('aria-invalid');link.removeAttribute('aria-invalid');
     name.setAttribute('aria-label',t('nameAria',i+1));link.setAttribute('aria-label',t('linkAria',i+1));
@@ -112,7 +114,8 @@ function validate() {
   const filled=all.filter(f=>f.name.value.trim()||f.link.value.trim()).map(f=>({row:f.row,number:all.indexOf(f)+1,...effective(f)}));
   const linked=filled.filter(e=>e.link),missing=filled.filter(e=>!e.link);
   for(const entry of linked){const type=protocolOf(entry.link);if(type)counts[type]=(counts[type]||0)+1;}
-  $('node-count').textContent=linked.length?[nodeCount(linked.length),...Object.entries(counts).map(([type,n])=>`${PROTOCOLS[type]} ${n}`)].join(' · '):'';
+  const off=linked.filter(e=>!e.enabled).length;
+  $('node-count').textContent=linked.length?[nodeCount(linked.length),...(off?[t('disabledCount',off)]:[]),...Object.entries(counts).map(([type,n])=>`${PROTOCOLS[type]} ${n}`)].join(' · '):'';
   // Blank names become <protocol>-<position>, as in parseNodes.
   linked.forEach((entry,i)=>{if(!entry.name)entry.row.querySelector('.node-name').placeholder=`${t('autoName')}${protocolOf(entry.link)||'node'}-${i+1}`;});
   const messages=[];
@@ -121,7 +124,7 @@ function validate() {
   const duplicates=duplicateNames(linked);
   for(const group of duplicates)for(const i of group)showRowError(linked[i].row,t('duplicateName',group.filter(j=>j!==i).map(j=>linked[j].number).join(language==='zh'?'、':', ')),'name');
   if(duplicates.length)messages.push(t('duplicates'));
-  composed=linked.map(entry=>joinNodeName(entry.name,entry.link)).join('\n');parsed=[];
+  composed=linked.map(writeNodeLine).join('\n');parsed=[];
   try {
     if(new TextEncoder().encode(JSON.stringify({nodes:composed,revision,template:selectedTemplate})).length>131072)throw Error(t('tooLarge'));
     if(linked.length)parsed=parseNodes(composed,language);
@@ -182,8 +185,8 @@ $('node-list').addEventListener('paste',event=>{
   const {row,name,link}=fields(event.target.closest('.node-row'));
   if(!lines.length||(lines.length===1&&link.value.trim()))return;
   event.preventDefault();
-  const entries=lines.map(splitNodeName);
-  if(!link.value.trim()){const first=entries.shift();link.value=first.link;if(!name.value.trim())name.value=first.name;}
+  const entries=lines.map(readNodeLine);
+  if(!link.value.trim()){const first=entries.shift();link.value=first.link;if(!name.value.trim())name.value=first.name;if(!first.enabled)row.querySelector('.node-toggle').checked=false;}
   if(entries.length)addRows(entries,row,'link');else validate();
 });
 $('node-list').addEventListener('click',event=>{

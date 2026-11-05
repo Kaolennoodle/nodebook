@@ -48,14 +48,25 @@ export function joinNodeName(name, link) {
   // An empty fragment keeps a VMess `ps` from coming back once the name is cleared.
   return label || protocolOf(base) === 'vmess' ? `${base}#${label.replace(/[%#\s]/g, encodeURIComponent)}` : base;
 }
+// A disabled node is stored as "# <link>": kept for editing, left out of the subscription.
+export function readNodeLine(line) {
+  const text = String(line).trim(), enabled = !text.startsWith('#');
+  return {enabled, ...splitNodeName(enabled ? text : text.replace(/^#\s*/, ''))};
+}
+export function writeNodeLine({enabled = true, name = '', link = ''}) {
+  const line = joinNodeName(name, link);
+  return line && !enabled ? `# ${line}` : line;
+}
 // Prefix avoids collisions with ACL4SSR groups and built-in policy names.
 export const nodeLabel = (name, type, index) => `节点 · ${name || `${type}-${index + 1}`}`;
 // Names that differ only by case, width or spacing are easy to confuse in a client.
 export const nameKey = label => label.normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
-// Groups of indexes into entries ({name, link}) whose node names would clash.
+// Groups of indexes into entries ({name, link, enabled}) whose node names would
+// clash. Disabled nodes never reach the subscription, so they cannot clash.
 export function duplicateNames(entries) {
   const groups = new Map();
-  entries.forEach(({name, link}, i) => {
+  entries.forEach(({name, link, enabled = true}, i) => {
+    if (!enabled) return;
     const key = nameKey(nodeLabel(String(name).trim(), protocolOf(link) || 'node', i));
     groups.set(key, [...(groups.get(key) || []), i]);
   });
@@ -245,13 +256,16 @@ function shadowsocks(line) {
   return {proxy: p, name};
 }
 
+// Returns the enabled nodes; disabled lines are still checked so they can be
+// re-enabled safely. Line numbers and automatic names count every line.
 // unique: reject clashing names (saving); otherwise number them (old profiles).
 export function parseNodes(text, language = 'zh', {unique = false} = {}) {
   if (typeof text !== 'string' || !text.trim()) throw new Error(language === 'zh' ? '请输入节点链接' : 'Enter at least one node link');
   const lines = text.trim().split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   if (lines.length > 200) throw new Error(language === 'zh' ? '最多保存 200 个节点' : 'Use no more than 200 nodes');
   const names = new Set(['DIRECT', 'REJECT']), seen = new Map();
-  return lines.map((line, i) => {
+  const nodes = lines.map((raw, i) => {
+    const enabled = !raw.startsWith('#'), line = enabled ? raw : raw.replace(/^#\s*/, '');
     try {
       if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(line)) throw new Error('节点链接格式无效');
       const type = protocolOf(line);
@@ -265,6 +279,7 @@ export function parseNodes(text, language = 'zh', {unique = false} = {}) {
         name = decodeURIComponent(u.hash.slice(1));
       }
       let label = nodeLabel(name.trim(), type, i);
+      if (!enabled) return null;
       if (unique) {
         const key = nameKey(label);
         if (seen.has(key)) throw new Error(`节点名称与第 ${seen.get(key)} 行重复`);
@@ -275,5 +290,7 @@ export function parseNodes(text, language = 'zh', {unique = false} = {}) {
       names.add(label);
       return {name: label, ...proxy};
     } catch (e) { const message = e instanceof URIError ? '链接包含无效的编码字符' : e.message; throw new Error(language === 'zh' ? `第 ${i + 1} 行：${message}` : `Line ${i + 1}: ${englishError(message)}`); }
-  });
+  }).filter(Boolean);
+  if (!nodes.length) throw new Error(language === 'zh' ? '请至少启用一个节点' : 'Enable at least one node');
+  return nodes;
 }

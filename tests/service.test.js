@@ -56,9 +56,12 @@ test('D1 lifecycle, optimistic concurrency, authorization and stable subscriptio
     assert.equal((await call(path,'PUT',{nodes:node.replace('@example.com','@new.example.com'),revision:1,template:'full-noauto'})).status,200);
     assert.equal((await (await call(path)).json()).template,'full-noauto');
     assert.equal((await (await call(`/${secret}/sub`)).json()).proxies[0].server,'new.example.com');
-    assert.equal((await call(path,'PUT',{nodes:node,revision:2})).status,200);
+    assert.equal((await call(path,'PUT',{nodes:'# '+node.replace('#香港','#备用')+'\n'+node.replace('@example.com','@new.example.com'),revision:2,template:'full-noauto'})).status,200);
+    assert.deepEqual((await (await call(`/${secret}/sub`)).json()).proxies.map(p=>p.name),['节点 · 香港']);
+    assert.equal((await call(path,'PUT',{nodes:'# '+node,revision:3})).status,400);
+    assert.equal((await call(path,'PUT',{nodes:node,revision:3})).status,200);
     assert.equal((await (await call(path)).json()).template,'full-noauto');
-    assert.equal((await call(path,'PUT',{nodes:node,revision:3,template:'full-noauto-steam-web'})).status,200);
+    assert.equal((await call(path,'PUT',{nodes:node,revision:4,template:'full-noauto-steam-web'})).status,200);
     assert.equal((await (await call(path)).json()).template,'full-noauto-steam-web');
     const steamConfig=await (await call(`/${secret}/sub`)).json();
     assert.ok(steamConfig['proxy-groups'].some(g=>g.name==='🎮 Steam 商店与社区'));
