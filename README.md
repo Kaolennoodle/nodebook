@@ -22,7 +22,7 @@
 - **D1 持久化**：数据保存在自己的 Cloudflare 数据库，重新部署 Worker 后仍可使用。
 - **Worker 内转换**：不依赖第三方订阅转换站，不向模板服务器发送节点信息。
 - **ACL4SSR 分流**：保留官方在线模板的策略组与规则顺序，生成 Mihomo rule-providers。
-- **18 种在线模板**：支持搜索与分类，默认使用排在第一位的「👑 ACL4SSR 王满仓大王定制版」，模板选择随配置保存。
+- **可自由组合的分流模板**：规模、选点方式、广告拦截和附加分组分别选择，实时预览订阅里的分组；另有「👑 王满仓大王定制规则」可勾选。
 - **三步完成**：访问密钥 → 节点与模板 → 订阅链接，界面简洁，无多余装饰。
 - **中英文与主题**：自动跟随浏览器语言和系统主题，可随时切换。
 - **明确校验**：错误行、未知参数和不支持的协议直接报错；版本检查防止多页面互相覆盖。
@@ -122,7 +122,7 @@ npm test
 
 1. 打开首页。老用户输入访问密钥并点击「打开」，新用户点击「生成密钥」。
 2. 逐个填写节点的名称（可留空自动命名）和链接，或在链接框一次粘贴多行链接；可拖动调整顺序，关闭「启用」的节点只保存在网站上，不进入订阅。页面会显示数量、类型、格式和重名检查结果。新密钥在保存节点后才写入数据库。
-3. 搜索或筛选订阅模板，点击「保存」。新配置默认使用「👑 ACL4SSR 王满仓大王定制版」。
+3. 选择分流模板的各项，对照下方「订阅预览」确认分组，点击「保存」。新配置默认为完整 + 手动选择 + 标准拦截 + 👑 定制规则。
 4. 复制订阅链接，在 Mihomo 客户端中选择「从 URL 导入」。结果页同时提供密钥与直达编辑网址，默认遮罩显示。
 5. 以后通过编辑网址或密钥打开配置，修改并保存，在客户端更新原订阅即可。
 
@@ -145,30 +145,34 @@ npm test
 
 ## ACL4SSR 模板
 
-内置 18 种 [ACL4SSR 官方在线模板](https://github.com/ACL4SSR/ACL4SSR/tree/master/Clash/config)，核对日期为 2026-10-16，上游模板目录最近更新于 2026-06-23。提供中英文说明、搜索和分类。
+模板以 [ACL4SSR 在线模板](https://github.com/ACL4SSR/ACL4SSR/tree/master/Clash/config) 的精简（Mini）、标准（Online）、完整（Full）三个基础版为底，由 Worker 按所选项目修改分组和规则后生成。修改方式与上游各变体文件一致，但可以自由组合：
 
-| 系列 | 预设 |
-| --- | --- |
-| Full | No Auto、Full、Adblock Plus、Google、Netflix、Multi Mode |
-| Standard | Online、No Auto、Adblock Plus、Multi Country、No Reject |
-| Mini | Mini、No Auto、Adblock Plus、AI、Fallback、Multi Country、Multi Mode |
+| 项目 | 选择 | 对应上游变体 |
+| --- | --- | --- |
+| 规模 | 精简 / 标准 / 完整 | Mini / Online / Full |
+| 选点方式 | 自动测速 / 手动选择 / 故障转移 / 多模式 | 默认 / No Auto / Fallback / Multi Mode |
+| 广告拦截 | 关闭 / 标准 / 增强 | No Reject / 默认 / Adblock Plus |
+| 附加分组 | 地区分组、AI 平台（完整版已自带）；Google 细分、Netflix 增强（仅完整版） | Multi Country、AI、Google、Netflix |
+| 定制规则 | 👑 王满仓大王定制规则 | 无，本项目自定义 |
 
-支持手动选择、自动测速、故障转移和负载均衡。没有匹配节点的地区组会移除并清理引用，规则顺序保留。各模板在 Worker 实例内缓存 1 小时。规则转成 Mihomo HTTP rule-providers，由客户端从官方仓库更新。节点不会发送给模板服务器。
+编辑页的「订阅预览」由 `POST /api/preview` 按当前节点（无有效节点时用示例节点）实际生成配置，列出每个分组的类型、用途和成员。
 
-旧配置迁移后继续使用原 Online 模板，可在编辑页重新选择。迁移只新增模板字段，不清空原有节点。
+与上游文件的差别：地区分组统一使用完整版的 6 个地区；增强拦截把 EasyPrivacy 单独放进「🛡️ 隐私防护」；Google 细分保留 SteamCN 直连；故障转移和负载均衡同时加入「🐟 漏网之鱼」。No Auto、No Reject、Mini Fallback、Mini Multi Mode 与上游生成结果一致，测试中逐条比对。
 
-本实现针对所列模板，不是完整 subconverter INI 解释器，不支持任意自定义模板 URL。模板获取失败返回 502；客户端初次下载规则需要访问 GitHub。上游变更可能影响后续配置，固定版本时可调整 public/templates.js 中的来源和对应规则校验逻辑。
+模板保存为 `规模.选点.拦截+附加项` 形式的字符串，例如 `full.manual.standard+wmc`。旧版本保存的模板 ID（如 `full-noauto`、`mini-ai`）仍可读取，下次保存时转换为新格式。没有匹配节点的地区组会移除并清理引用。基础模板在 Worker 实例内缓存 1 小时，规则转成 Mihomo HTTP rule-providers，由客户端从官方仓库更新。节点不会发送给模板服务器。
 
-### 👑 ACL4SSR 王满仓大王定制版
+本实现不是完整 subconverter INI 解释器，不支持任意自定义模板 URL。模板获取失败返回 502；客户端初次下载规则需要访问 GitHub。
 
-模板列表第一位，也是新配置的默认模板。已保存的配置仍使用各自原来选择的模板；之前选过 Steam 定制模板的配置会自动显示为新名称，规则不变。
+### 👑 王满仓大王定制规则
 
-- 基于官方 Full No Auto 在线模板，新增一个「🎮 Steam 商店与社区」手动策略组，默认跟随「🚀 节点选择」，也可选择 DIRECT 或单个节点。
+ACL4SSR 原版没有定义的自定义规则集，可在任何规模上勾选，规则放在模板规则之前。以后新增的定制规则也会放进这个选项。目前包含 Steam：
+
+- 新增「🎮 Steam 商店与社区」手动策略组，默认跟随「🚀 节点选择」，也可选择 DIRECT 或单个节点。
 - 国际商店、结账、社区及已列出的页面静态资源进入新组。登录、CM、API、Steam 内容下载等已覆盖域名强制 DIRECT，不随通用游戏组切换。
 - 网页例外规则置于服务直连规则之前；SteamCN 下载清单也固定 DIRECT。其他平台保持上游模板行为。
 - DIRECT 使用设备本地网络出口：仅在本地出口为中国大陆时才是国内 IP。下载地区、DNS、运营商及 Steam 调度也影响 CDN，不能保证下载落在国内。
 - Steam 网页登录会同时访问网页组和直连认证域名；共享资源不能按 URL 路径进一步区分。仅处理代理内核能识别域名的流量，不接管所有游戏 UDP/IP 连接。
-- 规则维护在 src/custom-templates.js，使用独立模板 ID 应用覆盖，便于以后增加其他平台。目前不提供其他平台的独立开关。
+- 规则维护在 `src/custom-templates.js` 的 `RULE_PACKS.wmc`，以后增加的规则作为新的部分加进去即可。
 
 ## 文件与接口
 
@@ -177,8 +181,10 @@ npm test
 | `public/` | HTML、CSS、浏览器 JS |
 | `src/worker.js` | API、持久化、静态页面路由 |
 | `src/converter.js` | 节点解析、模板转换 |
+| `src/compose.js` | 按所选项目修改基础模板 |
 | `migrations/` | D1 表结构 |
 | `GET /api/profiles/:secret` | 读取节点、模板及版本 |
+| `POST /api/preview` | 按节点和模板预览订阅分组（同源） |
 | `PUT /api/profiles/:secret` | `{nodes, revision, template}`，创建 revision=0，更新使用读取到的版本 |
 | `GET /:secret/sub` | 当前节点的 Mihomo 配置 |
 

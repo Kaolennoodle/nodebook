@@ -1,25 +1,49 @@
 import {convert, parseNodes} from './converter.js';
-import {templateById} from '../public/templates.js';
+import {BASE_URLS,decodeTemplate,normalizeTemplate} from '../public/templates.js';
 const secureHeaders = {'Cache-Control':'no-store', 'Referrer-Policy':'no-referrer', 'X-Content-Type-Options':'nosniff', 'X-Frame-Options':'DENY', 'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"};
 const json = (body, status = 200) => new Response(JSON.stringify(body), {status, headers:{...secureHeaders, 'Content-Type':'application/json; charset=utf-8'}});
 const validSecret = s => /^[A-Za-z0-9_-]{16,128}$/.test(s);
 async function hash(s) { return [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))].map(b => b.toString(16).padStart(2,'0')).join(''); }
 const templateCache = new Map();
-async function template(id = 'online') {
-  const selected = templateById(id);
-  if (!selected) throw new Error('未知模板');
-  const cachedTemplate = templateCache.get(id);
+// Fetches the ACL4SSR base template for a size; options are applied in convert.
+async function baseTemplate(size) {
+  const cachedTemplate = templateCache.get(size);
   if (cachedTemplate && Date.now() - cachedTemplate.time < 3600000) return cachedTemplate.text;
-  const response = await fetch(selected.url, {signal:AbortSignal.timeout(10000)});
+  const response = await fetch(BASE_URLS[size], {signal:AbortSignal.timeout(10000)});
   if (!response.ok) throw new Error('无法获取 ACL4SSR 模板，请稍后重试');
   const text = await response.text();
   if (text.length > 100000 || !text.includes('custom_proxy_group=')) throw new Error('ACL4SSR 模板异常');
-  templateCache.set(id,{time:Date.now(), text}); return text;
+  templateCache.set(size,{time:Date.now(), text}); return text;
 }
+// Same-origin JSON body of at most 128 KiB, or the error response to send.
+async function readJson(request, url) {
+  if (request.headers.get('Origin') !== url.origin) return {error:json({error:'仅允许同源保存'},403)};
+  if (!request.headers.get('Content-Type')?.startsWith('application/json')) return {error:json({error:'需要 JSON'},415)};
+  const reader = request.body?.getReader(); let size = 0; const chunks = [];
+  if (!reader) return {error:json({error:'缺少内容'},400)};
+  while (true) { const {done,value} = await reader.read(); if (done) break; size += value.byteLength; if (size > 131072) { await reader.cancel(); return {error:json({error:'节点内容超过 128 KiB'},413)}; } chunks.push(value); }
+  const bytes = new Uint8Array(size); let offset = 0; for (const c of chunks) {bytes.set(c,offset); offset += c.length;}
+  try { return {data:JSON.parse(new TextDecoder().decode(bytes))}; } catch { return {error:json({error:'无效 JSON'},400)}; }
+}
+// Shown in the preview when the editor has no valid enabled nodes yet.
+const SAMPLE_NODES = ['HK 香港 01','JP 日本 01','US 美国 01','SG 新加坡 01','TW 台湾 01','KR 韩国 01']
+  .map(name => `hysteria2://sample@example.com:443#${encodeURIComponent(name)}`).join('\n');
 export default {
   async fetch(request, env) {
     const url = new URL(request.url), parts = url.pathname.split('/').filter(Boolean);
     try {
+      // Groups the subscription would contain for a template and the editor's nodes.
+      if (parts[0] === 'api' && parts[1] === 'preview' && parts.length === 2) {
+        if (request.method !== 'POST') return json({error:'不支持的方法'},405);
+        const {data, error} = await readJson(request, url); if (error) return error;
+        const options = decodeTemplate(data?.template);
+        if (!options) return json({error:'未知模板'},400);
+        let nodes = typeof data.nodes === 'string' ? data.nodes : '', sample = false;
+        try { parseNodes(nodes); } catch { nodes = SAMPLE_NODES; sample = true; }
+        let config; try { config = convert(nodes, await baseTemplate(options.size), data.template); } catch { return json({error:'预览生成失败'},502); }
+        return json({sample, nodes:config.proxies.length, rules:config.rules.length,
+          groups:config['proxy-groups'].map(g => ({name:g.name, type:g.type, proxies:g.proxies}))});
+      }
       if (parts[0] === 'api' && parts[1] === 'profiles' && parts.length === 3) {
         const secret = parts[2];
         if (!validSecret(secret)) return json({error:'暗号需为 16–128 位字母、数字、下划线或短横线'},400);
@@ -29,19 +53,14 @@ export default {
           return row ? json(row) : json({error:'未找到此暗号，可在此页面创建'},404);
         }
         if (request.method !== 'PUT') return json({error:'不支持的方法'},405);
-        if (request.headers.get('Origin') !== url.origin) return json({error:'仅允许同源保存'},403);
-        if (!request.headers.get('Content-Type')?.startsWith('application/json')) return json({error:'需要 JSON'},415);
-        const reader = request.body?.getReader(); let size = 0; const chunks = [];
-        if (!reader) return json({error:'缺少内容'},400);
-        while (true) { const {done,value} = await reader.read(); if (done) break; size += value.byteLength; if (size > 131072) { await reader.cancel(); return json({error:'节点内容超过 128 KiB'},413); } chunks.push(value); }
-        const bytes = new Uint8Array(size); let offset = 0; for (const c of chunks) {bytes.set(c,offset); offset += c.length;}
-        let data; try { data = JSON.parse(new TextDecoder().decode(bytes)); } catch {return json({error:'无效 JSON'},400);}
+        const {data, error} = await readJson(request, url); if (error) return error;
         if (!data || !Number.isInteger(data.revision) || data.revision < 0) return json({error:'版本无效，请重新打开页面'},400);
         try { parseNodes(data.nodes, 'zh', {unique: true}); } catch(e) {return json({error:e.message},400);}
         // Older clients omit template: preserve the saved choice on update.
         const previous = data.template === undefined && data.revision > 0 ? await env.DB.prepare('SELECT template FROM profiles WHERE id = ?').bind(id).first() : null;
-        const selectedTemplate = data.template ?? previous?.template ?? 'online';
-        if (!templateById(selectedTemplate)) return json({error:'未知模板'},400);
+        // Earlier template ids are accepted and stored in the current form.
+        const selectedTemplate = normalizeTemplate(data.template ?? previous?.template ?? 'online');
+        if (!selectedTemplate) return json({error:'未知模板'},400);
         const now = new Date().toISOString();
         const result = data.revision === 0
           ? await env.DB.prepare('INSERT INTO profiles (id,nodes,template,revision,updated_at) VALUES (?,?,?,1,?) ON CONFLICT(id) DO NOTHING').bind(id,data.nodes,selectedTemplate,now).run()
@@ -54,12 +73,13 @@ export default {
         if (!validSecret(parts[0])) return json({error:'订阅不存在'},404);
         const row = await env.DB.prepare('SELECT nodes, template FROM profiles WHERE id = ?').bind(await hash(parts[0])).first();
         if (!row) return json({error:'订阅不存在'},404);
-        let config; try {config = convert(row.nodes, await template(row.template), row.template);} catch {return json({error:'配置生成失败，请检查节点或稍后重试 ACL4SSR 模板'},502);}
+        const options = decodeTemplate(row.template ?? 'online');
+        let config; try {config = convert(row.nodes, await baseTemplate(options?.size), row.template ?? 'online');} catch {return json({error:'配置生成失败，请检查节点或稍后重试 ACL4SSR 模板'},502);}
         // JSON is valid YAML 1.2 and accepted by Mihomo's YAML configuration loader.
         return new Response(request.method === 'HEAD' ? null : JSON.stringify(config,null,2),{headers:{...secureHeaders,'Content-Type':'text/yaml; charset=utf-8','Content-Disposition':'attachment; filename="subscription.yaml"','profile-update-interval':'6'}});
       }
       if (!['GET','HEAD'].includes(request.method)) return json({error:'不支持的方法'},405);
-      const asset = ['/app.js','/style.css','/favicon.svg','/nodes.js','/templates.js','/i18n.js'].includes(url.pathname);
+      const asset = ['/app.js','/style.css','/favicon.svg','/nodes.js','/templates.js','/i18n.js','/groups.js'].includes(url.pathname);
       if (!asset && url.pathname !== '/' && !(parts.length === 1 && validSecret(parts[0]))) return json({error:'页面不存在'},404);
       const target = new URL(asset ? url.pathname : '/index.html',url.origin);
       const res = await env.ASSETS.fetch(new Request(target,{method:request.method}));

@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {convert} from '../src/converter.js';
-import {STEAM_WEB_TEMPLATE,STEAM_WEB_GROUP} from '../src/custom-templates.js';
-const ini=readFileSync(new URL('./fixtures/templates/ACL4SSR_Online_Full_NoAuto.ini',import.meta.url),'utf8');
+import {STEAM_WEB_GROUP} from '../src/custom-templates.js';
+const ini=readFileSync(new URL('./fixtures/templates/ACL4SSR_Online_Full.ini',import.meta.url),'utf8');
 const nodes='vless://11111111-1111-4111-8111-111111111111@example.com:443?security=tls#HK';
-const base=convert(nodes,ini);
-const custom=convert(nodes,ini,STEAM_WEB_TEMPLATE);
+const base=convert(nodes,ini,'full.manual.standard');
+const custom=convert(nodes,ini,'full.manual.standard+wmc');
 const prefix=custom.rules.slice(0,custom.rules.length-base.rules.length);
 function policy(host){return prefix.find(rule=>{
   const [type,value]=rule.split(',');
@@ -26,4 +26,6 @@ test('only one group added; upstream policies retained; SteamCN pinned direct',(
   const cn=Object.entries(custom['rule-providers']).find(([,p])=>p.url.endsWith('/SteamCN.list'))[0];
   assert.ok(prefix.includes(`RULE-SET,${cn},DIRECT`));
   assert.deepEqual(convert(nodes,ini,'full-noauto'),base);
+  // The rule pack works on every size.
+  for(const size of ['mini','standard'])assert.equal(convert(nodes,readFileSync(new URL(`./fixtures/templates/ACL4SSR_Online${size==='mini'?'_Mini':''}.ini`,import.meta.url),'utf8'),`${size}.auto.off+wmc`)['proxy-groups'].at(-1).name,STEAM_WEB_GROUP);
 });

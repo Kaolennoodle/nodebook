@@ -1,5 +1,6 @@
 import {parseNodes,PROTOCOLS,protocolOf,splitNodeName,readNodeLine,writeNodeLine,duplicateNames} from './nodes.js';
-import {templates,templateById,DEFAULT_TEMPLATE} from './templates.js';
+import {CHOICES,EXTRAS,DEFAULT_TEMPLATE,decodeTemplate,encodeTemplate,extraState} from './templates.js';
+import {describeGroup,CUSTOM_GROUPS} from './groups.js';
 import {zh,en} from './i18n.js';
 const $ = id => document.getElementById(id);
 const preferences = {get(key) {try {return localStorage.getItem(key);} catch {return null;}},set(key,value) {try {localStorage.setItem(key,value);} catch {}}};
@@ -31,6 +32,7 @@ function go(next,{replace=false,history=true}={}) {
   document.querySelectorAll('[data-step]').forEach((item,i)=>{item.className=i===index?'active':i<index?'complete':''; if(i===index)item.setAttribute('aria-current','step');else item.removeAttribute('aria-current');});
   $('status').hidden=true;
   if(next==='result') renderResult();
+  if(next==='nodes') schedulePreview(0);
   const path=secret&&revision ? `/${secret}` : '/';
   const hash=(next==='access'&&!(secret&&revision))||(next==='nodes'&&revision)?'':`#${next}`;
   if(history) window.history[replace?'replaceState':'pushState']({view:next},'',path+hash);
@@ -48,28 +50,90 @@ function localize() {
   document.querySelectorAll('[data-placeholder]').forEach(el=>el.placeholder=t(el.dataset.placeholder));
   $('language').textContent=language==='zh'?'English':'中文';$('language').setAttribute('aria-label',t('languageAria'));
   document.querySelector('.steps').setAttribute('aria-label',language==='zh'?'操作步骤':'Progress');
-  $('status').hidden=true;applyTheme();updateReveal();renderTemplates();validate();
+  $('status').hidden=true;applyTheme();updateReveal();renderTemplates();renderPreview();validate();
   if(view==='result') renderResult();
   document.title=`${t({access:'step1',nodes:'step2',result:'step3'}[view])} · ${t('brand')}`;
 }
-function renderTemplates() {
-  $('template-total').textContent=templates.length;
-  const query=$('template-search').value.trim().toLowerCase(),filter=$('template-filter').value;
-  const matches=templates.filter(item=>(filter==='all'||item.family===filter||item.mode===filter)&&`${item.name} ${item.description.zh} ${item.description.en}`.toLowerCase().includes(query));
-  $('template-select').replaceChildren();
-  for(const item of matches) {const option=document.createElement('option');option.value=item.id;option.textContent=`${item.name} · ${t(item.mode)}${item.id===DEFAULT_TEMPLATE?` (${t('defaultTag')})`:''}`;option.selected=item.id===selectedTemplate;$('template-select').append(option);}
-  if(!matches.length){const option=new Option(t('noTemplates'),'');option.disabled=true;$('template-select').append(option);}
-  // Filtering does not silently change the saved selection.
-  $('template-select').value=matches.some(x=>x.id===selectedTemplate)?selectedTemplate:'';
-  renderDetail();
+// Template options: a radio group per choice and a checkbox per add-on. The
+// controls are rebuilt on every change, keeping focus on the same control.
+const templateOptions=()=>decodeTemplate(selectedTemplate)||decodeTemplate(DEFAULT_TEMPLATE);
+function optionSet(key,children,hint) {
+  const set=document.createElement('fieldset');set.className=`option-set option-${key}`;
+  const legend=document.createElement('legend');legend.textContent=t(`legend_${key}`);set.append(legend,...children);
+  if(hint){const p=document.createElement('p');p.className='option-hint';p.textContent=hint;set.append(p);}
+  return set;
 }
-function renderDetail() {
-  const item=templateById(selectedTemplate);const box=$('template-detail');box.replaceChildren();
-  if(!item)return;
-  const title=document.createElement('strong');title.textContent=`${item.name} · ${t(item.family)} · ${t(item.mode)}`;
-  const desc=document.createElement('p');desc.textContent=item.description[language];
-  const note=document.createElement('p');note.textContent=item.mode==='manual'?t('manualHint'):t('regionHint');
-  box.append(title,desc,note);
+function renderTemplates() {
+  const options=templateOptions(),focused=$('template-options').contains(document.activeElement)?document.activeElement.id:'';
+  const choices=Object.entries(CHOICES).map(([key,values])=>{
+    const row=document.createElement('div');row.className='segmented';
+    for(const value of values){
+      const input=document.createElement('input');input.type='radio';input.name=`opt-${key}`;input.id=`opt-${key}-${value}`;input.value=value;input.dataset.key=key;
+      input.checked=options[key]===value;input.disabled=busy;
+      const label=document.createElement('label');label.htmlFor=input.id;label.textContent=t(`${key}_${value}`);row.append(input,label);
+    }
+    return optionSet(key,[row],t(`${key}Hint_${options[key]}`));
+  });
+  const check=extra=>{
+    const state=extraState(extra.id,options.size),item=document.createElement('div');item.className='check'+(extra.custom?' custom':'');
+    const input=document.createElement('input');input.type='checkbox';input.id=`opt-extra-${extra.id}`;input.dataset.extra=extra.id;
+    input.checked=state==='included'||options.extras.includes(extra.id);input.disabled=busy||state!=='available';
+    const label=document.createElement('label');label.htmlFor=input.id;
+    const name=document.createElement('span');name.className='check-name';name.textContent=t(`extra_${extra.id}`);label.append(name);
+    if(state!=='available'){const tag=document.createElement('span');tag.className='tag';tag.textContent=t(state==='included'?'included':'fullOnly');name.append(' ',tag);}
+    const hint=document.createElement('span');hint.className='check-hint';hint.textContent=t(`extraHint_${extra.id}`);label.append(hint);
+    item.append(input,label);return item;
+  };
+  const grid=list=>{const box=document.createElement('div');box.className='checks';box.append(...list.map(check));return box;};
+  $('template-options').replaceChildren(...choices,optionSet('extras',[grid(EXTRAS.filter(e=>!e.custom))]),optionSet('custom',[grid(EXTRAS.filter(e=>e.custom))]));
+  if(focused)$(focused)?.focus();
+  schedulePreview(0);
+}
+$('template-options').addEventListener('change',event=>{
+  const input=event.target,options=templateOptions();
+  if(input.dataset.key)options[input.dataset.key]=input.value;
+  else if(input.dataset.extra)options.extras=input.checked?[...options.extras,input.dataset.extra]:options.extras.filter(id=>id!==input.dataset.extra);
+  selectedTemplate=encodeTemplate(options);renderTemplates();validate();
+});
+// The preview asks the Worker which groups the subscription would contain for
+// the current nodes and options; it waits for typing to pause.
+let preview=null,previewKey='',previewTimer,previewRequest;
+function schedulePreview(delay=500){clearTimeout(previewTimer);previewTimer=setTimeout(loadPreview,delay);}
+async function loadPreview() {
+  if($('nodes').hidden)return;
+  const key=JSON.stringify([composed,selectedTemplate]);if(key===previewKey)return;previewKey=key;
+  previewRequest?.abort();const request=previewRequest=new AbortController();
+  $('preview').setAttribute('aria-busy','true');$('preview-summary').textContent=t('previewLoading');
+  try {
+    const response=await fetch('/api/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nodes:composed,template:selectedTemplate}),signal:request.signal});
+    if(!response.ok)throw new Error(String(response.status));
+    renderPreview(await response.json());
+  }catch{
+    if(request.signal.aborted)return;
+    previewKey='';preview=null;$('preview-summary').textContent=t('previewError');$('preview-groups').replaceChildren();
+  }finally{if(previewRequest===request)$('preview').removeAttribute('aria-busy');}
+}
+function renderPreview(data=preview) {
+  preview=data;if(!data)return;
+  $('preview-summary').textContent=[t('previewGroups',data.groups.length),t('previewRules',data.rules),data.sample?t('previewSample'):t('previewYours',data.nodes)].join(' · ');
+  const groups=new Set(data.groups.map(g=>g.name));
+  $('preview-groups').replaceChildren(...data.groups.map(group=>{
+    const custom=CUSTOM_GROUPS.has(group.name),card=document.createElement('article');card.className='group-card'+(custom?' custom':'');
+    const head=document.createElement('div');head.className='group-head';
+    const name=document.createElement('h4');name.textContent=group.name;
+    const badges=document.createElement('span');badges.className='badges';
+    for(const [text,extra] of [...(custom?[[t('customBadge'),' custom']]:[]),[t(`type_${group.type}`),'']]){const badge=document.createElement('span');badge.className='badge'+extra;badge.textContent=text;badges.append(badge);}
+    head.append(name,badges);card.append(head);
+    const description=describeGroup(group.name,language);
+    if(description){const p=document.createElement('p');p.className='group-desc';p.textContent=description;card.append(p);}
+    const members=document.createElement('p');members.className='group-members';
+    for(const member of group.proxies.slice(0,6)){
+      const chip=document.createElement('span');chip.className='chip'+(groups.has(member)?' chip-group':['DIRECT','REJECT'].includes(member)?' chip-policy':'');
+      chip.textContent=member.replace(/^节点 · /,'');chip.title=member;members.append(chip);
+    }
+    if(group.proxies.length>6){const more=document.createElement('span');more.className='chip chip-more';more.textContent=t('previewMore',group.proxies.length-6);members.append(more);}
+    card.append(members);return card;
+  }));
 }
 // Each node is a row with separate name and link fields; together they are
 // stored as one link per line with the name as its #fragment.
@@ -137,14 +201,14 @@ function validate() {
   $('validation').textContent=!filled.length?t('empty'):valid?t('valid'):messages[0];
   $('validation').className='validation'+(!filled.length?'':valid?' valid':' error');
   $('add-node').disabled=busy||all.length>=MAX_NODES;
-  $('save').disabled=busy||!valid||!templateById(selectedTemplate);updateDirty();return valid;
+  $('save').disabled=busy||!valid||!decodeTemplate(selectedTemplate);updateDirty();schedulePreview();return valid;
 }
 function addRows(list,after,focus='name') {
   const created=list.map(createRow);
   if(after)after.after(...created);else $('node-list').append(...created);
   validate();created.at(-1)?.querySelector(focus==='link'?'.node-link':'.node-name').focus();
 }
-function setBusy(value){busy=value;for(const id of ['open','create','template-search','template-filter','template-select','key-input','nodes-back'])$(id).disabled=value;$('node-list').querySelectorAll('input,button').forEach(el=>el.disabled=value);validate();}
+function setBusy(value){busy=value;for(const id of ['open','create','key-input','nodes-back'])$(id).disabled=value;renderTemplates();$('node-list').querySelectorAll('input,button').forEach(el=>el.disabled=value);validate();}
 function updateDirty(){dirty=composed!==savedNodes||selectedTemplate!==savedTemplate;}
 async function load(key) {
   if(!validKey(key)){toast('invalidKey',true);return;}
@@ -152,9 +216,9 @@ async function load(key) {
   try {
     const response=await fetch(`/api/profiles/${key}`,{cache:'no-store'});
     if(!response.ok){toast(response.status===404?'missing':'service',true);return;}
-    const data=await response.json();secret=key;revision=data.revision;selectedTemplate=templateById(data.template)?data.template:'online';
+    const data=await response.json();secret=key;revision=data.revision;selectedTemplate=encodeTemplate(decodeTemplate(data.template)||decodeTemplate('online'));
     // Compare against the normalized form so opening alone is not an edit.
-    setRows(rowsFromText(data.nodes));savedTemplate=selectedTemplate;$('template-search').value='';$('template-filter').value='all';
+    setRows(rowsFromText(data.nodes));savedTemplate=selectedTemplate;
     renderTemplates();validate();savedNodes=composed;dirty=false;go('nodes',{replace:true});
   }catch{toast('network',true);}finally{setBusy(false);}
 }
@@ -165,7 +229,7 @@ function renderResult(){
 $('create').onclick=()=>{
   if(busy)return;
   secret=Array.from(crypto.getRandomValues(new Uint8Array(24)),b=>b.toString(16).padStart(2,'0')).join('');revision=0;selectedTemplate=DEFAULT_TEMPLATE;
-  setRows([]);savedNodes='';savedTemplate=DEFAULT_TEMPLATE;$('template-search').value='';$('template-filter').value='all';
+  setRows([]);savedNodes='';savedTemplate=DEFAULT_TEMPLATE;
   renderTemplates();validate();dirty=false;go('nodes');
 };
 $('access-form').onsubmit=e=>{e.preventDefault();if(!busy)load($('key-input').value.trim());};
@@ -245,8 +309,6 @@ $('node-list').addEventListener('keydown',event=>{
   moveRow(row,()=>up?target.before(row):target.after(row));
   handle.focus();validate();toast(t('moved',rows().indexOf(row)+1),false,true);
 });
-$('template-search').oninput=renderTemplates;$('template-filter').onchange=renderTemplates;
-$('template-select').onchange=()=>{if(templateById($('template-select').value)){selectedTemplate=$('template-select').value;updateDirty();renderDetail();validate();}};
 $('editor').onsubmit=async e=>{
   e.preventDefault();if(busy||!validate())return;
   setBusy(true);toast('saving');
@@ -256,7 +318,7 @@ $('editor').onsubmit=async e=>{
     const data=await response.json();revision=data.revision;savedNodes=composed;savedTemplate=selectedTemplate;dirty=false;go('result');
   }catch{toast('network',true);}finally{setBusy(false);}
 };
-$('nodes-back').onclick=()=>{if(!dirty||confirm(t('discard'))){setRows(rowsFromText(savedNodes));selectedTemplate=savedTemplate;validate();dirty=false;go('access');}};
+$('nodes-back').onclick=()=>{if(!dirty||confirm(t('discard'))){setRows(rowsFromText(savedNodes));selectedTemplate=savedTemplate;renderTemplates();validate();dirty=false;go('access');}};
 $('edit-again').onclick=()=>go('nodes');
 $('language').onclick=()=>{language=language==='zh'?'en':'zh';preferences.set('nodebook-language',language);localize();};
 $('theme').onclick=()=>{theme={system:'light',light:'dark',dark:'system'}[theme];preferences.set('nodebook-theme',theme);applyTheme();};

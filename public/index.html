@@ -28,10 +28,13 @@
 <p class="hint" data-t="nameHint">Leave the name blank to name the node automatically. Names must be unique. Paste several links into a link field to add them all at once; a name after # moves into the name field.</p>
 
 <h2 data-t="templateTitle">Routing template</h2>
-<div class="row"><label class="sr-only" for="template-search" data-t="searchTemplates">Search templates</label><input id="template-search" type="search" data-placeholder="searchTemplates" placeholder="Search templates"><label class="sr-only" for="template-filter" data-t="category">Category</label><select id="template-filter"><option value="all" data-t="all">All</option><option value="full" data-t="full">Full</option><option value="standard" data-t="standard">Standard</option><option value="mini" data-t="mini">Mini</option><option value="manual" data-t="manual">Manual only</option></select></div>
-<label class="sr-only" for="template-select" data-t="templateTitle">Routing template</label><select id="template-select" size="7"></select>
-<div id="template-detail" class="detail"></div>
-<p class="hint"><span id="template-total">19</span> <span data-t="templateSource">templates: official ACL4SSR plus local custom presets.</span> <a href="https://github.com/ACL4SSR/ACL4SSR/tree/master/Clash/config" target="_blank" rel="noreferrer" data-t="source">Source</a></p>
+<p class="hint" data-t="templateIntro">Built from the ACL4SSR online templates. Choose each part separately; the preview shows the groups your subscription will contain.</p>
+<div id="template-options" class="template-options"></div>
+<section id="preview" class="preview" aria-labelledby="preview-title">
+<div class="preview-head"><h3 id="preview-title" data-t="previewTitle">Subscription preview</h3><span id="preview-summary" class="muted" aria-live="polite"></span></div>
+<div id="preview-groups" class="preview-groups"></div>
+</section>
+<p class="hint"><span data-t="templateSource">Groups and rule lists come from ACL4SSR; the 👑 custom rules are this project's own.</span> <a href="https://github.com/ACL4SSR/ACL4SSR/tree/master/Clash/config" target="_blank" rel="noreferrer" data-t="source">Source</a></p>
 <div class="actions"><button id="nodes-back" type="button" class="link" data-t="back">Back</button><button id="save" type="submit" class="primary" disabled data-t="save">Save</button></div>
 </form>
 </section>
