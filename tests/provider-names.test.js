@@ -14,7 +14,7 @@ test('a provider name always refers to the same rule list, across every template
   for (const file of readdirSync(dir).filter(f => f.endsWith('.ini'))) {
     const providers = convert(nodes, readFileSync(new URL(file, dir), 'utf8'))['rule-providers'];
     for (const [key, p] of Object.entries(providers)) {
-      assert.equal(p.path, `./ruleset/${key}.list`, file);
+      assert.equal(p.path, undefined, file);
       assert.equal(seen.get(key) ?? p.url, p.url, `${file}: ${key} reused for another list`);
       seen.set(key, p.url);
     }

@@ -157,7 +157,7 @@ npm test
 
 编辑页的「订阅预览」由 `POST /api/preview` 按当前节点（无有效节点时用示例节点）实际生成配置，列出每个分组的类型、用途和成员。
 
-与上游文件的差别：地区分组统一使用完整版的 6 个地区；增强拦截把 EasyPrivacy 单独放进「🛡️ 隐私防护」；Google 细分保留 SteamCN 直连；故障转移和负载均衡同时加入「🐟 漏网之鱼」。No Auto、No Reject、Mini Fallback、Mini Multi Mode 与上游生成结果一致，测试中逐条比对。
+与上游文件的差别：地区分组统一使用完整版的 6 个地区，且匹配更严格（英文缩写需单独成词，如 AUS 不算美国、UKR 不算韩国；台湾需匹配地名，「平台」不算）；手动选择时「🚀 节点选择」把 DIRECT 放在最后，避免默认直连；增强拦截把 EasyPrivacy 单独放进「🛡️ 隐私防护」；Google 细分保留 SteamCN 直连；故障转移和负载均衡同时加入「🐟 漏网之鱼」。No Reject、Mini Fallback、Mini Multi Mode 与上游生成结果一致，No Auto 除上述顺序外一致，测试中逐条比对。规则集不指定缓存路径，由 Mihomo 按网址 MD5 命名，避免与同一客户端里其他订阅的同名缓存文件冲突。
 
 模板保存为 `规模.选点.拦截+附加项` 形式的字符串，例如 `full.manual.standard+wmc`。旧版本保存的模板 ID（如 `full-noauto`、`mini-ai`）仍可读取，下次保存时转换为新格式。没有匹配节点的地区组会移除并清理引用。基础模板在 Worker 实例内缓存 1 小时，规则转成 Mihomo HTTP rule-providers，由客户端从官方仓库更新。节点不会发送给模板服务器。
 

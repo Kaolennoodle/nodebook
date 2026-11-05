@@ -7,15 +7,21 @@
 const LIST = 'https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/';
 const TEST = 'http://www.gstatic.com/generate_204';
 const AUTO = '♻️ 自动选择', SELECT = '🚀 节点选择', MANUAL = '🚀 手动切换', FINAL = '🐟 漏网之鱼', DIRECT_GROUP = '🎯 全球直连';
-// Region groups as defined by the Full template.
+// Region groups as defined by the Full template, with stricter name patterns
+// (used for every size, replacing the upstream ones): letter codes must stand
+// alone, so "AUS" is not the US and "UKR" is not Korea, and Taiwan needs a
+// place name, so "平台" does not count.
+const code = (...codes) => codes.map(c => `(?<![A-Za-z])${c}(?![A-Za-z])`).join('|');
 const REGIONS = [
-  ['🇭🇰 香港节点', '(港|HK|hk|Hong Kong|HongKong|hongkong)', '300,,50'],
-  ['🇯🇵 日本节点', '(日本|川日|东京|大阪|泉日|埼玉|沪日|深日|JP|Japan)', '300,,50'],
-  ['🇺🇲 美国节点', '(美|波特兰|达拉斯|俄勒冈|凤凰城|费利蒙|硅谷|拉斯维加斯|洛杉矶|圣何塞|圣克拉拉|西雅图|芝加哥|US|United States)', '300,,150'],
-  ['🇨🇳 台湾节点', '(台|新北|彰化|TW|Taiwan)', '300,,50'],
-  ['🇸🇬 狮城节点', '(新加坡|坡|狮城|SG|Singapore)', '300,,50'],
-  ['🇰🇷 韩国节点', '(KR|Korea|KOR|首尔|韩|韓)', '300,,50']
+  ['🇭🇰 香港节点', `(港|${code('HK', 'HKG', 'hk')}|Hong ?Kong|hongkong)`, '300,,50'],
+  ['🇯🇵 日本节点', `(日本|川日|东京|大阪|泉日|埼玉|沪日|深日|${code('JP', 'JPN')}|Japan)`, '300,,50'],
+  ['🇺🇲 美国节点', `(美|波特兰|达拉斯|俄勒冈|凤凰城|费利蒙|硅谷|拉斯维加斯|洛杉矶|圣何塞|圣克拉拉|西雅图|芝加哥|${code('US', 'USA')}|United States)`, '300,,150'],
+  ['🇨🇳 台湾节点', `(台湾|台灣|臺灣|台北|臺北|台中|台南|高雄|新北|彰化|${code('TW', 'TWN')}|Taiwan)`, '300,,50'],
+  ['🇸🇬 狮城节点', `(新加坡|坡|狮城|${code('SG', 'SGP')}|Singapore)`, '300,,50'],
+  ['🇰🇷 韩国节点', `(${code('KR', 'KOR')}|Korea|首尔|韩|韓)`, '300,,50']
 ];
+const REGION_PATTERNS = new Map(REGIONS.map(([name, pattern]) => [name, pattern]));
+const isPattern = part => !part.startsWith('[]') && !/^https?:|^\d+(,,\d+)?$/.test(part);
 const ref = name => `[]${name}`;
 const group = (name, type, ...parts) => ({name, type, parts});
 const ruleset = (target, source) => ({group: target, source: /^\[\]|^https?:/.test(source) ? source : LIST + source});
@@ -115,7 +121,11 @@ const MODE_EDITS = {
   auto() {},
   // NoAuto: no background tests anywhere; region groups become manual lists.
   manual(t) {
+    // Groups that offered automatic selection before DIRECT (🚀 节点选择 in Mini
+    // and Standard) would otherwise default to DIRECT: move DIRECT to the end.
+    const directNext = t.groups.filter(g => g.parts[0] === ref(AUTO) && g.parts[1] === '[]DIRECT');
     removeGroups(t, [AUTO]);
+    for (const g of directNext) g.parts = [...g.parts.filter(p => p !== '[]DIRECT'), '[]DIRECT'];
     for (const g of t.groups) if (g.type === 'url-test') { g.type = 'select'; g.parts = g.parts.filter(p => !/^https?:|^\d+(,,\d+)?$/.test(p)); }
   },
   fallback(t) { addFailover(t, [group('🔯 故障转移', 'fallback', '.*', TEST, '300,,50')]); },
@@ -131,5 +141,6 @@ export function composeTemplate(text, options) {
   for (const id of ['regions', 'ai', 'google', 'netflix']) if (options.extras.includes(id)) EXTRA_EDITS[id](t);
   AD_EDITS[options.ads](t);
   MODE_EDITS[options.mode](t);
+  for (const g of t.groups) if (REGION_PATTERNS.has(g.name)) g.parts = g.parts.map(p => isPattern(p) ? REGION_PATTERNS.get(g.name) : p);
   return serialize(t);
 }

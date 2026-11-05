@@ -35,11 +35,13 @@ export function convert(nodes, template, templateId) {
         rules.push(rule === 'FINAL' ? `MATCH,${group}` : `${rule},${group}`);
       } else {
         if (!source.startsWith(ACL_BASE)) throw new Error('模板规则来源无效');
-        // Name providers by their list, not their position: clients cache each
-        // list under its name, so positional names (acl-N) map stale caches to
-        // the wrong group whenever the template adds or removes a ruleset.
+        // Name providers by their list, not their position, so a name never
+        // points at another list. No `path`: Mihomo then caches each list under
+        // the MD5 of its URL, which other subscriptions on the same client
+        // cannot collide with (a shared ruleset/ directory is read without
+        // checking which URL a file came from).
         const key = providerKey(source);
-        providers[key] ??= {type:'http', behavior:'classical', format:'text', url:source, path:`./ruleset/${key}.list`, interval:86400};
+        providers[key] ??= {type:'http', behavior:'classical', format:'text', url:source, interval:86400};
         rules.push(`RULE-SET,${key},${group}`);
       }
     }
