@@ -43,7 +43,7 @@ test('compositions reproduce upstream variant templates',()=>{
   const nodes = named('HK 香港','JP 日本','US 美国','SG 新加坡','TW 台湾','KR 韩国','NF Netflix','Music 网易');
   const summary = config => ({
     groups: config['proxy-groups'].map(g=>`${g.name}|${g.type}|${[...g.proxies].sort()}`).sort(),
-    rules: config.rules.map(r=>r.replace(/^RULE-SET,(acl-\d+)/,(_,key)=>config['rule-providers'][key].url))
+    rules: config.rules.map(r=>r.replace(/^RULE-SET,([^,]+)/,(_,key)=>config['rule-providers'][key].url))
   });
   for (const [id,file] of [['full-noauto','_Full_NoAuto'],['noauto','_NoAuto'],['mini-noauto','_Mini_NoAuto'],['noreject','_NoReject'],['mini-fallback','_Mini_Fallback'],['mini-multimode','_Mini_MultiMode']])
     assert.deepEqual(summary(convert(nodes,bases[decodeTemplate(id).size],id)),summary(convert(nodes,fixture(file))),id);

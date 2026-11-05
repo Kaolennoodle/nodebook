@@ -4,6 +4,10 @@ import {composeTemplate} from './compose.js';
 import {decodeTemplate} from '../public/templates.js';
 export {parseNodes};
 
+const ACL_BASE = 'https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/';
+// Clash/Ruleset/GoogleFCM.list -> Ruleset-GoogleFCM. Stable for a given list.
+export const providerKey = url => url.slice(ACL_BASE.length).replace(/\.list$/, '').replace(/[^\w.-]+/g, '-');
+
 // template: the ACL4SSR base for the chosen size. Without templateId it is
 // used exactly as given (an upstream file).
 export function convert(nodes, template, templateId) {
@@ -30,9 +34,12 @@ export function convert(nodes, template, templateId) {
         const rule = source.slice(2);
         rules.push(rule === 'FINAL' ? `MATCH,${group}` : `${rule},${group}`);
       } else {
-        if (!source.startsWith('https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/')) throw new Error('模板规则来源无效');
-        const key = `acl-${Object.keys(providers).length + 1}`;
-        providers[key] = {type:'http', behavior:'classical', format:'text', url:source, path:`./ruleset/${key}.list`, interval:86400};
+        if (!source.startsWith(ACL_BASE)) throw new Error('模板规则来源无效');
+        // Name providers by their list, not their position: clients cache each
+        // list under its name, so positional names (acl-N) map stale caches to
+        // the wrong group whenever the template adds or removes a ruleset.
+        const key = providerKey(source);
+        providers[key] ??= {type:'http', behavior:'classical', format:'text', url:source, path:`./ruleset/${key}.list`, interval:86400};
         rules.push(`RULE-SET,${key},${group}`);
       }
     }
