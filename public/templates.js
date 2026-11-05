@@ -24,10 +24,12 @@ export const templates = definitions.map(([id,suffix,label,zh,en,family,mode]) =
   url:`https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/config/ACL4SSR_Online${suffix ? '_'+suffix : ''}.ini`
 }));
 export const templateById = id => templates.find(t => t.id === id);
-templates.splice(1,0,{
-  id:'full-noauto-steam-web',name:'ACL4SSR Online Full No Auto · Steam Store & Community',
-  description:{zh:'自定义模板：Steam 商店与社区独立分组；登录、CM、API 和已覆盖的下载域名固定直连。直连使用本地出口，不保证国内 IP 或国内 CDN。',en:'Custom preset: separate Steam store/community policy; login, CM, API and covered downloads use DIRECT. Direct uses your local exit; a Chinese IP/CDN is not guaranteed.'},
+// The custom preset leads the list and is the default for new collections.
+// Its id stays the same so collections that already use it are unaffected.
+templates.unshift({
+  id:'full-noauto-steam-web',name:'👑 ACL4SSR 王满仓大王定制版',
+  description:{zh:'基于 Full No Auto 的定制版：Steam 商店与社区独立分组；登录、CM、API 和已覆盖的下载域名固定直连。直连使用本地出口，不保证国内 IP 或国内 CDN。',en:'Custom edition of Full No Auto: separate Steam store/community policy; login, CM, API and covered downloads use DIRECT. Direct uses your local exit; a Chinese IP/CDN is not guaranteed.'},
   family:'full',mode:'manual',custom:true,
-  url:templates[0].url
+  url:templateById('full-noauto').url
 });
-export const DEFAULT_TEMPLATE = 'full-noauto';
+export const DEFAULT_TEMPLATE = 'full-noauto-steam-web';

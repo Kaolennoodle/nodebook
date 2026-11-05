@@ -27,3 +27,11 @@ test('node errors can be shown in English',()=>{
   assert.throws(()=>parseNodes('socks5://example','en'),/Line 1: Unsupported protocol/);
   assert.throws(()=>parseNodes('','en'),/Enter at least/);
 });
+test('custom edition leads the list and is the default',async()=>{
+  const {DEFAULT_TEMPLATE,templateById}=await import('../public/templates.js');
+  assert.equal(templates[0].id,'full-noauto-steam-web');
+  assert.equal(templates[0].name,'👑 ACL4SSR 王满仓大王定制版');
+  assert.equal(DEFAULT_TEMPLATE,templates[0].id);
+  assert.equal(templates[0].url,templateById('full-noauto').url);
+  assert.equal(new Set(templates.map(t=>t.id)).size,templates.length);
+});

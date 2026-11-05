@@ -22,7 +22,7 @@
 - **D1 持久化**：数据保存在自己的 Cloudflare 数据库，重新部署 Worker 后仍可使用。
 - **Worker 内转换**：不依赖第三方订阅转换站，不向模板服务器发送节点信息。
 - **ACL4SSR 分流**：保留官方在线模板的策略组与规则顺序，生成 Mihomo rule-providers。
-- **18 种在线模板**：支持搜索与分类，默认 ACL4SSR Online Full No Auto，模板选择随配置保存。
+- **18 种在线模板**：支持搜索与分类，默认使用排在第一位的「👑 ACL4SSR 王满仓大王定制版」，模板选择随配置保存。
 - **三步完成**：访问密钥 → 节点与模板 → 订阅链接，界面简洁，无多余装饰。
 - **中英文与主题**：自动跟随浏览器语言和系统主题，可随时切换。
 - **明确校验**：错误行、未知参数和不支持的协议直接报错；版本检查防止多页面互相覆盖。
@@ -122,7 +122,7 @@ npm test
 
 1. 打开首页。老用户输入访问密钥并点击「打开」，新用户点击「生成密钥」。
 2. 逐个填写节点的名称（可留空自动命名）和链接，或在链接框一次粘贴多行链接；可拖动调整顺序，关闭「启用」的节点只保存在网站上，不进入订阅。页面会显示数量、类型、格式和重名检查结果。新密钥在保存节点后才写入数据库。
-3. 搜索或筛选订阅模板，点击「保存」。新配置默认使用 ACL4SSR Online Full No Auto。
+3. 搜索或筛选订阅模板，点击「保存」。新配置默认使用「👑 ACL4SSR 王满仓大王定制版」。
 4. 复制订阅链接，在 Mihomo 客户端中选择「从 URL 导入」。结果页同时提供密钥与直达编辑网址，默认遮罩显示。
 5. 以后通过编辑网址或密钥打开配置，修改并保存，在客户端更新原订阅即可。
 
@@ -149,7 +149,7 @@ npm test
 
 | 系列 | 预设 |
 | --- | --- |
-| Full | No Auto（默认）、Full、Adblock Plus、Google、Netflix、Multi Mode |
+| Full | No Auto、Full、Adblock Plus、Google、Netflix、Multi Mode |
 | Standard | Online、No Auto、Adblock Plus、Multi Country、No Reject |
 | Mini | Mini、No Auto、Adblock Plus、AI、Fallback、Multi Country、Multi Mode |
 
@@ -159,9 +159,9 @@ npm test
 
 本实现针对所列模板，不是完整 subconverter INI 解释器，不支持任意自定义模板 URL。模板获取失败返回 502；客户端初次下载规则需要访问 GitHub。上游变更可能影响后续配置，固定版本时可调整 public/templates.js 中的来源和对应规则校验逻辑。
 
-### Steam 商店与社区自定义模板
+### 👑 ACL4SSR 王满仓大王定制版
 
-选择 **ACL4SSR Online Full No Auto · Steam Store & Community**，保存后更新客户端原订阅即可。原来的 18 种官方模板、默认模板和已保存配置均不改变。
+模板列表第一位，也是新配置的默认模板。已保存的配置仍使用各自原来选择的模板；之前选过 Steam 定制模板的配置会自动显示为新名称，规则不变。
 
 - 基于官方 Full No Auto 在线模板，新增一个「🎮 Steam 商店与社区」手动策略组，默认跟随「🚀 节点选择」，也可选择 DIRECT 或单个节点。
 - 国际商店、结账、社区及已列出的页面静态资源进入新组。登录、CM、API、Steam 内容下载等已覆盖域名强制 DIRECT，不随通用游戏组切换。
