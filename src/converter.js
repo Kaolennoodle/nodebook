@@ -1,5 +1,5 @@
 import {parseNodes} from '../public/nodes.js';
-import {applyRulePacks} from './custom-templates.js';
+import {applyTweaks} from './tweaks.js';
 import {composeTemplate} from './compose.js';
 import {decodeTemplate} from '../public/templates.js';
 export {parseNodes};
@@ -62,5 +62,5 @@ export function convert(nodes, template, templateId) {
   for (const g of activeGroups) for (const p of g.proxies) if (!policies.has(p)) throw new Error('模板引用未知分组');
   for (const rule of rules) if (!policies.has(rule.split(',').at(-1))) throw new Error('模板规则引用未知分组');
   const config = {'mixed-port':7890, 'allow-lan':false, mode:'rule', 'log-level':'info', ipv6:true, proxies, 'proxy-groups':activeGroups, 'rule-providers':providers, rules};
-  return options ? applyRulePacks(config, options) : config;
+  return options ? applyTweaks(config, options) : config;
 }

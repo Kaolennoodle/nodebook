@@ -1,6 +1,6 @@
 import {parseNodes,PROTOCOLS,protocolOf,splitNodeName,readNodeLine,writeNodeLine,duplicateNames} from './nodes.js';
 import {CHOICES,EXTRAS,DEFAULT_TEMPLATE,decodeTemplate,encodeTemplate,extraState} from './templates.js';
-import {describeGroup,CUSTOM_GROUPS} from './groups.js';
+import {describeGroup} from './groups.js';
 import {zh,en} from './i18n.js';
 const $ = id => document.getElementById(id);
 const preferences = {get(key) {try {return localStorage.getItem(key);} catch {return null;}},set(key,value) {try {localStorage.setItem(key,value);} catch {}}};
@@ -75,7 +75,7 @@ function renderTemplates() {
     return optionSet(key,[row],t(`${key}Hint_${options[key]}`));
   });
   const check=extra=>{
-    const state=extraState(extra.id,options.size),item=document.createElement('div');item.className='check'+(extra.custom?' custom':'');
+    const state=extraState(extra.id,options.size),item=document.createElement('div');item.className='check';
     const input=document.createElement('input');input.type='checkbox';input.id=`opt-extra-${extra.id}`;input.dataset.extra=extra.id;
     input.checked=state==='included'||options.extras.includes(extra.id);input.disabled=busy||state!=='available';
     const label=document.createElement('label');label.htmlFor=input.id;
@@ -85,7 +85,7 @@ function renderTemplates() {
     item.append(input,label);return item;
   };
   const grid=list=>{const box=document.createElement('div');box.className='checks';box.append(...list.map(check));return box;};
-  $('template-options').replaceChildren(...choices,optionSet('extras',[grid(EXTRAS.filter(e=>!e.custom))]),optionSet('custom',[grid(EXTRAS.filter(e=>e.custom))]));
+  $('template-options').replaceChildren(...choices,optionSet('extras',[grid(EXTRAS.filter(e=>!e.tweak))]),optionSet('tweaks',[grid(EXTRAS.filter(e=>e.tweak))]));
   if(focused)$(focused)?.focus();
   schedulePreview(0);
 }
@@ -110,19 +110,25 @@ async function loadPreview() {
     renderPreview(await response.json());
   }catch{
     if(request.signal.aborted)return;
-    previewKey='';preview=null;$('preview-summary').textContent=t('previewError');$('preview-groups').replaceChildren();
+    previewKey='';preview=null;$('preview-summary').textContent=t('previewError');$('preview-tweaks').replaceChildren();$('preview-groups').replaceChildren();
   }finally{if(previewRequest===request)$('preview').removeAttribute('aria-busy');}
 }
 function renderPreview(data=preview) {
   preview=data;if(!data)return;
   $('preview-summary').textContent=[t('previewGroups',data.groups.length),t('previewRules',data.rules),data.sample?t('previewSample'):t('previewYours',data.nodes)].join(' · ');
+  // Optimizations add rules, not groups, so they get a line of their own.
+  $('preview-tweaks').replaceChildren(...(data.tweaks||[]).map(tweak=>{
+    const line=document.createElement('p');line.className='preview-tweak';
+    const name=document.createElement('strong');name.textContent=t(`extra_${tweak.id}`);
+    line.append(name,` · ${t('previewTweakRules',tweak.rules)}`);return line;
+  }));
   const groups=new Set(data.groups.map(g=>g.name));
   $('preview-groups').replaceChildren(...data.groups.map(group=>{
-    const custom=CUSTOM_GROUPS.has(group.name),card=document.createElement('article');card.className='group-card'+(custom?' custom':'');
+    const card=document.createElement('article');card.className='group-card';
     const head=document.createElement('div');head.className='group-head';
     const name=document.createElement('h4');name.textContent=group.name;
     const badges=document.createElement('span');badges.className='badges';
-    for(const [text,extra] of [...(custom?[[t('customBadge'),' custom']]:[]),[t(`type_${group.type}`),'']]){const badge=document.createElement('span');badge.className='badge'+extra;badge.textContent=text;badges.append(badge);}
+    const badge=document.createElement('span');badge.className='badge';badge.textContent=t(`type_${group.type}`);badges.append(badge);
     head.append(name,badges);card.append(head);
     const description=describeGroup(group.name,language);
     if(description){const p=document.createElement('p');p.className='group-desc';p.textContent=description;card.append(p);}

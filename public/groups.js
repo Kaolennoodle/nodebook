@@ -1,5 +1,5 @@
-// Short descriptions of the proxy groups ACL4SSR and the custom rule packs
-// create, shown in the template preview. Unknown groups get none.
+// Short descriptions of the proxy groups ACL4SSR creates, shown in the
+// template preview. Unknown groups get none.
 const GROUPS = {
   '🚀 节点选择': ['总开关：大部分需要代理的流量都走这里，在此选择自动、地区分组或具体节点。', 'Main switch: most proxied traffic goes here. Pick automatic, a region or a specific node.'],
   '🚀 手动切换': ['列出全部节点，供手动指定某一个。', 'Every node, for picking one by hand.'],
@@ -33,13 +33,10 @@ const GROUPS = {
   '🍃 应用净化': ['应用内广告，默认拦截。', 'In-app ads; blocked by default.'],
   '🆎 AdBlock': ['EasyList 与 EasyList China 广告规则。', 'EasyList and EasyList China ad rules.'],
   '🛡️ 隐私防护': ['EasyPrivacy 跟踪器拦截。', 'EasyPrivacy tracker blocking.'],
-  '🐟 漏网之鱼': ['所有规则都没匹配上的流量。', 'Traffic no rule matched.'],
-  '🎮 Steam 商店与社区': ['👑 定制规则：Steam 商店、结账与社区网页；登录、API 和游戏下载固定直连，不经过这里。', '👑 Custom rules: Steam store, checkout and community pages; sign-in, API and game downloads always go direct.']
+  '🐟 漏网之鱼': ['所有规则都没匹配上的流量。', 'Traffic no rule matched.']
 };
 const REGION = /^(\S+) (香港|台湾|狮城|日本|美国|韩国)节点$/;
 const REGION_EN = {香港:'Hong Kong', 台湾:'Taiwan', 狮城:'Singapore', 日本:'Japan', 美国:'United States', 韩国:'South Korea'};
-// Groups added by custom rule packs rather than ACL4SSR.
-export const CUSTOM_GROUPS = new Set(['🎮 Steam 商店与社区']);
 export function describeGroup(name, language) {
   const known = GROUPS[name];
   if (known) return known[language === 'zh' ? 0 : 1];

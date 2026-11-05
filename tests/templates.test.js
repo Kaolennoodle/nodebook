@@ -35,7 +35,7 @@ test(`all ${combos.length} template combinations produce valid configs`,()=>{
     assert.equal(groupsOf(config).includes('🔮 负载均衡'),options.mode==='multi',id);
     assert.equal(groupsOf(config).includes('🆎 AdBlock'),options.ads==='plus',id);
     assert.equal(config['proxy-groups'].some(g=>g.proxies.join()==='REJECT,DIRECT'),options.ads!=='off',id);
-    assert.equal(groupsOf(config).includes('🎮 Steam 商店与社区'),options.extras.includes('wmc'),id);
+    assert.equal(config.rules[0]==='DOMAIN,login.steampowered.com,DIRECT',options.extras.includes('steam'),id);
     if (options.extras.includes('ai')) assert.ok(groupsOf(config).includes('💬 Ai平台'),id);
     if (options.extras.includes('google')) assert.ok(groupsOf(config).includes('📢 谷歌'),id);
   }
@@ -63,14 +63,15 @@ test('manual mode puts DIRECT last in node selection',()=>{
   for(const size of ['mini','standard']) assert.deepEqual(convert(named('A','B'),bases[size],`${size}.manual.standard`)['proxy-groups'][0].proxies,['节点 · A','节点 · B','DIRECT'],size);
 });
 test('template ids encode, decode and accept earlier ids',()=>{
-  assert.deepEqual(decodeTemplate(DEFAULT_TEMPLATE),{size:'full',mode:'manual',ads:'standard',extras:['wmc']});
+  assert.deepEqual(decodeTemplate(DEFAULT_TEMPLATE),{size:'full',mode:'manual',ads:'standard',extras:['steam']});
   assert.equal(normalizeTemplate('full-noauto-steam-web'),DEFAULT_TEMPLATE);
   assert.equal(normalizeTemplate('multicountry'),'standard.auto.standard+regions+ai');
   // Built-in or unavailable add-ons are dropped, so the same choice has one id.
-  assert.equal(normalizeTemplate('full.auto.standard+ai+regions+wmc'),'full.auto.standard+wmc');
+  assert.equal(normalizeTemplate('full.auto.standard+ai+regions+steam'),'full.auto.standard+steam');
   assert.equal(normalizeTemplate('mini.auto.standard+google'),'mini.auto.standard');
-  assert.equal(normalizeTemplate('mini.auto.off+wmc+ai'),'mini.auto.off+ai+wmc');
-  for (const bad of ['', 'unknown', 'huge.auto.standard', 'full.auto.standard+steam', 'full.auto.standard+wmc+wmc', null]) assert.equal(decodeTemplate(bad),null,String(bad));
+  assert.equal(normalizeTemplate('mini.auto.off+steam+ai'),'mini.auto.off+ai+steam');
+  assert.equal(normalizeTemplate('mini.auto.off+wmc'),'mini.auto.off+steam');
+  for (const bad of ['', 'unknown', 'huge.auto.standard', 'full.auto.standard+steamx', 'full.auto.standard+steam+steam', 'full.auto.standard+wmc+steam', null]) assert.equal(decodeTemplate(bad),null,String(bad));
 });
 test('all interface strings exist in both languages',()=>assert.deepEqual(Object.keys(zh).sort(),Object.keys(en).sort()));
 test('node errors can be shown in English',()=>{

@@ -62,15 +62,17 @@ test('D1 lifecycle, optimistic concurrency, authorization and stable subscriptio
     assert.equal((await call(path,'PUT',{nodes:node,revision:3})).status,200);
     assert.equal((await (await call(path)).json()).template,'full.manual.standard');
     assert.equal((await call(path,'PUT',{nodes:node,revision:4,template:'full-noauto-steam-web'})).status,200);
-    assert.equal((await (await call(path)).json()).template,'full.manual.standard+wmc');
+    assert.equal((await (await call(path)).json()).template,'full.manual.standard+steam');
     const steamConfig=await (await call(`/${secret}/sub`)).json();
-    assert.ok(steamConfig['proxy-groups'].some(g=>g.name==='🎮 Steam 商店与社区'));
-    assert.ok(steamConfig.rules.includes('DOMAIN-SUFFIX,steampowered.com,DIRECT'));
+    assert.equal(steamConfig.rules[0],'DOMAIN,login.steampowered.com,DIRECT');
+    // The store is no longer caught by a broad steampowered.com direct rule.
+    assert.ok(!steamConfig.rules.includes('DOMAIN-SUFFIX,steampowered.com,DIRECT'));
     assert.equal((await call('/unknown-secret-12345/sub')).status,404);
     // Preview: groups for the editor's nodes, or sample nodes when they are not valid yet.
-    const preview=await (await call('/api/preview','POST',{nodes:node,template:'mini.auto.off+wmc'})).json();
+    const preview=await (await call('/api/preview','POST',{nodes:node,template:'mini.auto.off+steam'})).json();
     assert.equal(preview.sample,false);assert.equal(preview.nodes,1);
-    assert.deepEqual(preview.groups.map(g=>g.name),['🚀 节点选择','♻️ 自动选择','🎯 全球直连','🐟 漏网之鱼','🎮 Steam 商店与社区']);
+    assert.deepEqual(preview.groups.map(g=>g.name),['🚀 节点选择','♻️ 自动选择','🎯 全球直连','🐟 漏网之鱼']);
+    assert.deepEqual(preview.tweaks,[{id:'steam',rules:9}]);
     const sample=await (await call('/api/preview','POST',{nodes:'',template:'full-noauto'})).json();
     assert.equal(sample.sample,true);assert.ok(sample.groups.some(g=>g.name==='🇯🇵 日本节点'&&g.type==='select'));
     assert.equal((await call('/api/preview','POST',{nodes:node,template:'nope'})).status,400);

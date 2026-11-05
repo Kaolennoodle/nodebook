@@ -1,5 +1,6 @@
 import {convert, parseNodes} from './converter.js';
 import {BASE_URLS,decodeTemplate,normalizeTemplate} from '../public/templates.js';
+import {TWEAKS} from './tweaks.js';
 const secureHeaders = {'Cache-Control':'no-store', 'Referrer-Policy':'no-referrer', 'X-Content-Type-Options':'nosniff', 'X-Frame-Options':'DENY', 'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"};
 const json = (body, status = 200) => new Response(JSON.stringify(body), {status, headers:{...secureHeaders, 'Content-Type':'application/json; charset=utf-8'}});
 const validSecret = s => /^[A-Za-z0-9_-]{16,128}$/.test(s);
@@ -42,6 +43,7 @@ export default {
         try { parseNodes(nodes); } catch { nodes = SAMPLE_NODES; sample = true; }
         let config; try { config = convert(nodes, await baseTemplate(options.size), data.template); } catch { return json({error:'预览生成失败'},502); }
         return json({sample, nodes:config.proxies.length, rules:config.rules.length,
+          tweaks:options.extras.filter(id => TWEAKS[id]).map(id => ({id, rules:TWEAKS[id].length})),
           groups:config['proxy-groups'].map(g => ({name:g.name, type:g.type, proxies:g.proxies}))});
       }
       if (parts[0] === 'api' && parts[1] === 'profiles' && parts.length === 3) {
